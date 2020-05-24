@@ -4,13 +4,14 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>e64fc27c-ebd5-4352-b912-1ba034e37194</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>kaggle_tweet_sentiment_extraction.py</StartupFile>
+    <StartupFile>src\main.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
     <OutputPath>.</OutputPath>
     <Name>kaggle_tweet_sentiment_extraction</Name>
     <RootNamespace>kaggle_tweet_sentiment_extraction</RootNamespace>
+    <InterpreterId>CondaEnv|CondaEnv|nlp_eng_pytorch</InterpreterId>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -21,7 +22,54 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="kaggle_tweet_sentiment_extraction.py" />
+    <Compile Include="src\dataloader\data_loader.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\data\data_utils.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\download.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\main.py" />
+    <Compile Include="src\model\loss.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\model\tweet_model.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\pipeline.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\prediction\predicting.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\model\eval_utils.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\prediction\pred_utils.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\training\scheduler.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\training\training.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\training\train_utils.py">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <InterpreterReference Include="CondaEnv|CondaEnv|nlp_eng_pytorch" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="src\" />
+    <Folder Include="src\data\" />
+    <Folder Include="src\model\" />
+    <Folder Include="src\dataloader\" />
+    <Folder Include="src\prediction\" />
+    <Folder Include="src\training\" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
