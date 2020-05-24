@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 SAMP_SUB_FILE = '../input/tweet-sentiment-extraction/sample_submission.csv'
 
@@ -12,6 +13,7 @@ def make_submission(predictions, filename_head):
     return
 
 def neutral_pred_to_text(pred_selected_text, text, sentiments):
-    conv_preds = pred_selected_text.copy()
-    conv_preds[sentiments=='neutral'] = text[sentiments=='neutral']
-    return conv_preds
+    neutral_idxs = sentiments.values=='neutral'
+    conv_preds = np.array(pred_selected_text)
+    conv_preds[neutral_idxs] = text.values[neutral_idxs]
+    return conv_preds.tolist()

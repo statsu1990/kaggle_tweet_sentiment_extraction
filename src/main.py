@@ -10,6 +10,7 @@ import pipeline
 #pipeline.Proto_v0_2_0().train()
 #pipeline.Proto_v0_2_0().pred_test()
 
-pipeline.Model_v1_0_0().train()
+#pipeline.Model_v1_0_0().train()
 #pipeline.Model_v1_0_0().pred_test()
-#pipeline.Model_v1_1_0().train()
+pipeline.Model_v1_1_0().train()
+#pipeline.Model_v1_1_0().pred_test()
