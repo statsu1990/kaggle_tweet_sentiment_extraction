@@ -10,3 +10,8 @@ def make_submission(predictions, filename_head):
     sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
     sub_df.to_csv(filename_head + 'submission.csv', index=False)
     return
+
+def neutral_pred_to_text(pred_selected_text, text, sentiments):
+    conv_preds = pred_selected_text.copy()
+    conv_preds[sentiments=='neutral'] = text[sentiments=='neutral']
+    return conv_preds

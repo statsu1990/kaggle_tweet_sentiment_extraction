@@ -6,6 +6,7 @@ def get_selected_text(text, start_idx, end_idx, offsets):
         selected_text += text[offsets[ix][0]: offsets[ix][1]]
         if (ix + 1) < len(offsets) and offsets[ix][1] < offsets[ix + 1][0]:
             selected_text += " "
+
     return selected_text
 
 def jaccard(str1, str2): 
