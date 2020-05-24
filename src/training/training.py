@@ -22,7 +22,9 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
         epoch_loss = 0.0
         epoch_jaccard = 0.0
             
-        optimizer.zero_grad()
+        if phase == 'train':
+            optimizer.zero_grad()
+
         for batch_idx, data in enumerate(tqdm(dataloaders_dict[phase])):
             # data
             ids = data['ids'].cuda()
@@ -81,14 +83,14 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
             vl_score = epoch_jaccard
 
     if not only_val:
-        return tr_loss, tr_score, vl_score, vl_score
+        return tr_loss, tr_score, vl_loss, vl_score
     else:
         return vl_score, vl_score
 
 def train_model(model, dataloaders_dict, criterion, optimizer, 
                  num_epochs, grad_accum_steps, 
                  warmup_epoch, step_scheduler, 
-                 filename_head='', only_val=False):
+                 filename_head='', fold=0, only_val=False):
 
     # warmup_scheduler
     if warmup_epoch > 0:
@@ -100,31 +102,33 @@ def train_model(model, dataloaders_dict, criterion, optimizer,
         # scheduler
         if epoch > warmup_epoch - 1:
             warm_sch = None
-            step_scheduler.step()
+            if step_scheduler is not None:
+                step_scheduler.step()
         else:
             warm_sch = warmup_scheduler
 
         print('\nepoch ', epoch)
-        for param_group in optimizer.param_groups:
-            now_lr = param_group['lr']
-            print('lr :', now_lr)
+        if optimizer is not None:
+            for param_group in optimizer.param_groups:
+                now_lr = param_group['lr']
+                print('lr :', now_lr)
 
         log = trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, warm_sch, only_val)
 
         if not only_val:
             # save checkpoint
-            #save_checkpoint(epoch, model, optimizer, step_scheduler, filename_head + 'checkpoint.pth')
-            save_checkpoint(None, model, None, None, filename_head + 'checkpoint.pth')
+            #save_checkpoint(epoch, model, optimizer, step_scheduler, cp_filename)
+            save_checkpoint(None, model, None, None, filename_head+'checkpoint_fold'+str(fold)+'.pth')
 
             # save log
             loglist.append([epoch] + [now_lr] + list(log))
             colmuns = ['epoch', 'lr', 'tr_loss', 'tr_score', 'vl_loss', 'vl_score']
-            save_log(loglist, colmuns, filename_head + 'training_log.csv')
+            save_log(loglist, colmuns, filename_head + 'training_log_fold'+str(fold)+'.csv')
         else:
             # save log
             loglist.append([epoch] + [now_lr] + list(log))
             colmuns = ['epoch', 'lr', 'vl_loss', 'vl_score']
-            save_log(loglist, colmuns, filename_head + 'val_log.csv')
+            save_log(loglist, colmuns, filename_head + 'val_log_fold'+str(fold)+'.csv')
 
-    return model
+    return model, log[-1]
 

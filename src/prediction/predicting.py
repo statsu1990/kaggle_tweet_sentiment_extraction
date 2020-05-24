@@ -4,9 +4,15 @@ from tqdm import tqdm
 
 from model import eval_utils as evut
 
-def predicter(model, dataloader):
-    model = model.cuda()
-    model.eval()
+def predicter(models, dataloader):
+    """
+    Args:
+        models : list of models
+    """
+    # to cuda, eval mode
+    for model in models:
+        model = model.cuda()
+        model.eval()
 
     predictions = []
 
@@ -17,10 +23,15 @@ def predicter(model, dataloader):
         tweet = data['tweet']
         offsets = data['offsets'].numpy()
 
-        with torch.no_grad():
-            output = model(ids, masks)
-            start_probs = torch.softmax(output[0], dim=1).cpu().detach().numpy()
-            end_probs = torch.softmax(output[1], dim=1).cpu().detach().numpy()
+        # pred
+        start_probs, end_probs = [], []
+        for model in models:
+            with torch.no_grad():
+                output = model(ids, masks)
+                start_probs.append(torch.softmax(output[0], dim=1).cpu().detach().numpy())
+                end_probs.append(torch.softmax(output[1], dim=1).cpu().detach().numpy())
+        start_probs = np.mean(start_probs, axis=0)
+        end_probs = np.mean(end_probs, axis=0)
 
         for i in range(len(ids)):
             start_pred = np.argmax(start_probs[i])
