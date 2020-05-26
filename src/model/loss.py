@@ -12,22 +12,26 @@ class LabelSmoothingLoss(nn.Module):
         self.cls = classes
         self.dim = dim
 
-    def forward(self, pred, target):
+    def forward(self, pred, target, text_areas=None):
         if self.cls is None:
-            cls = pred.size()[self.dim]
+            if text_areas is None:
+                cls = max([pred.size()[self.dim], 2])
+            else:
+                cls = torch.sum(text_areas, dim=1, keepdim=True)
+                cls[cls < 2] = 2
         else:
             cls = self.cls
 
         pred = pred.log_softmax(dim=self.dim)
         with torch.no_grad():
             # true_dist = pred.data.clone()
-            true_dist = torch.zeros_like(pred)
-            if cls > 1:
-                true_dist.fill_(self.smoothing / (cls - 1))
-            else:
-                true_dist.fill_(0)
+            true_dist = torch.ones_like(pred)
+            true_dist = true_dist * self.smoothing / (cls - 1)
             true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
-        loss = torch.mean(torch.sum(-true_dist * pred, dim=self.dim))
+        if text_areas is None:
+            loss = torch.mean(torch.sum(-true_dist * pred, dim=self.dim))
+        else:
+            loss = torch.mean(torch.sum(- true_dist * pred * text_areas, dim=self.dim))
         return loss
 
 class IndexLoss(nn.Module):
@@ -38,9 +42,9 @@ class IndexLoss(nn.Module):
         super(IndexLoss, self).__init__()
         self.loss_func = LabelSmoothingLoss(classes, smoothing, dim)
 
-    def forward(self, start_logits, end_logits, start_positions, end_positions):
-        start_loss = self.loss_func(start_logits, start_positions)
-        end_loss = self.loss_func(end_logits, end_positions)    
+    def forward(self, start_logits, end_logits, start_positions, end_positions, text_areas=None):
+        start_loss = self.loss_func(start_logits, start_positions, text_areas)
+        end_loss = self.loss_func(end_logits, end_positions, text_areas)
         total_loss = start_loss + end_loss
         return total_loss
 

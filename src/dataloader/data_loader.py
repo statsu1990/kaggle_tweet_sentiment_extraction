@@ -19,11 +19,12 @@ class TweetDataset(torch.utils.data.Dataset):
         data = {}
         row = self.df.iloc[index]
         
-        ids, masks, tweet, offsets = self.get_input_data(row)
+        ids, masks, tweet, offsets, text_areas = self.get_input_data(row)
         data['ids'] = ids
         data['masks'] = masks
         data['tweet'] = tweet
         data['offsets'] = offsets
+        data['text_areas'] = text_areas
         
         if self.labeled:
             start_idx, end_idx = self.get_target_idx(row, tweet, offsets)
@@ -40,18 +41,21 @@ class TweetDataset(torch.utils.data.Dataset):
         encoding = self.tokenizer.encode(tweet)
         sentiment_id = self.tokenizer.encode(row.sentiment).ids
         ids = [0] + sentiment_id + [2, 2] + encoding.ids + [2]
+        text_areas = [False] + [False] + [False, False] + [True] * len(encoding.ids) + [False]
         offsets = [(0, 0)] * 4 + encoding.offsets + [(0, 0)]
                 
         pad_len = self.max_len - len(ids)
         if pad_len > 0:
             ids += [1] * pad_len
+            text_areas += [False] * pad_len
             offsets += [(0, 0)] * pad_len
         
         ids = torch.tensor(ids)
         masks = torch.where(ids != 1, torch.tensor(1), torch.tensor(0))
+        text_areas = torch.tensor(text_areas)
         offsets = torch.tensor(offsets)
         
-        return ids, masks, tweet, offsets
+        return ids, masks, tweet, offsets, text_areas
         
     def get_target_idx(self, row, tweet, offsets):
         selected_text = " " +  " ".join(row.selected_text.lower().split())

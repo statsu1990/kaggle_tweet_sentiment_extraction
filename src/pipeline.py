@@ -731,9 +731,10 @@ class Model_v1_4_0():
 
 class Model_v1_5_0():
     """
-    score  (only posi and nega), 
-    implement remove_excessive_padding
+    score 0.54651 (only posi and nega), 
+    implement consideration of text_areas
 
+    implement remove_excessive_padding
     train only positive and negative
     label smoothing 0.05
     lr 1e-5
