@@ -11,4 +11,6 @@ import pipeline
 #pipeline.Model_v1_2_1().train()
 
 #pipeline.Model_v1_3_4().train()
-pipeline.Model_v1_3_4_fold10().train()
+#pipeline.Model_v1_3_4_fold10().train()
+
+pipeline.Model_v1_4_0().train()

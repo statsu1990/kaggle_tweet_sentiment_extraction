@@ -4,6 +4,22 @@ from tqdm import tqdm
 
 from model import eval_utils as evut
 
+def remove_excessive_padding(data, pad_id=1):
+    """
+    ids = data['ids']
+    masks = data['masks']
+    tweet = data['tweet']
+    offsets = data['offsets']
+    """
+    min_n_pad = torch.min(torch.sum(torch.eq(data['ids'], pad_id), dim=-1))
+    max_len = data['ids'].size()[-1] - min_n_pad
+
+    data['ids'] = (data['ids'])[:,:max_len]
+    data['masks'] = (data['masks'])[:,:max_len]
+    data['offsets'] = (data['offsets'])[:,:max_len]
+
+    return data
+
 def predicter(models, dataloader):
     """
     Args:
@@ -17,6 +33,9 @@ def predicter(models, dataloader):
     predictions = []
 
     for batch_idx, data in enumerate(tqdm(dataloader)):
+        # remove excessive padding
+        data = remove_excessive_padding(data)
+
         # data
         ids = data['ids'].cuda()
         masks = data['masks'].cuda()

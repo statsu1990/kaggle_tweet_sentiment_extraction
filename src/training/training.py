@@ -5,6 +5,31 @@ from model import eval_utils as evut
 from .scheduler import WarmUpLR
 from .train_utils import save_log, save_checkpoint
 
+def remove_excessive_padding(data, pad_id=1):
+    """
+    Set length to the max length except pad in batch.
+    """
+    """
+    ids = data['ids']
+    masks = data['masks']
+    tweet = data['tweet']
+    offsets = data['offsets']
+    start_idx = data['start_idx']
+    end_idx = data['end_idx']
+    """
+    min_n_pad = torch.min(torch.sum(torch.eq(data['ids'], pad_id), dim=-1))
+    max_len = data['ids'].size()[-1] - min_n_pad
+    print(data['ids'][0])
+    print(data['ids'][1])
+
+    data['ids'] = (data['ids'])[:,:max_len]
+    data['masks'] = (data['masks'])[:,:max_len]
+    data['offsets'] = (data['offsets'])[:,:max_len]
+    print(data['ids'][0])
+    print(data['ids'][1])
+
+    return data
+
 def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, warmup_scheduler, only_val=False):
     model = model.cuda()
 
@@ -26,6 +51,9 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
             optimizer.zero_grad()
 
         for batch_idx, data in enumerate(tqdm(dataloaders_dict[phase])):
+            # remove excessive padding
+            data = remove_excessive_padding(data)
+
             # data
             ids = data['ids'].cuda()
             masks = data['masks'].cuda()
