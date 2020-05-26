@@ -19,14 +19,10 @@ def remove_excessive_padding(data, pad_id=1):
     """
     min_n_pad = torch.min(torch.sum(torch.eq(data['ids'], pad_id), dim=-1))
     max_len = data['ids'].size()[-1] - min_n_pad
-    print(data['ids'][0])
-    print(data['ids'][1])
 
     data['ids'] = (data['ids'])[:,:max_len]
     data['masks'] = (data['masks'])[:,:max_len]
     data['offsets'] = (data['offsets'])[:,:max_len]
-    print(data['ids'][0])
-    print(data['ids'][1])
 
     return data
 
@@ -66,7 +62,7 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
                 # pred, loss
                 start_logits, end_logits = model(ids, masks)
                 loss = criterion(start_logits, end_logits, start_idx, end_idx) / grad_accum_steps
-                    
+                
                 # update
                 if phase == 'train':
                     loss.backward()
