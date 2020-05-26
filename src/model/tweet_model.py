@@ -27,3 +27,16 @@ class TweetModel(nn.Module):
         end_logits = end_logits.squeeze(-1)
                 
         return start_logits, end_logits
+
+    def get_params(self):
+        """
+        Returns:
+            bert params:
+            other params:
+        """
+        model_params = list(self.named_parameters())
+
+        bert_params = [p for n, p in model_params if "roberta" in n]
+        other_params = [p for n, p in model_params if not "roberta" in n]
+
+        return bert_params, other_params

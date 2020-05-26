@@ -34,8 +34,8 @@ def calc_start_end_index_v1(start_probs, end_probs):
     return start_pred, end_pred
 
 def calc_start_end_index_v2(start_probs, end_probs):
-    #comb_mat = start_probs[:,None] + end_probs
-    comb_mat = start_probs[:,None] * end_probs
+    comb_mat = start_probs[:,None] + end_probs
+    #comb_mat = start_probs[:,None] * end_probs
     comb_mat = np.triu(comb_mat, k=1)
     start_pred, end_pred = np.unravel_index(np.argmax(comb_mat), comb_mat.shape)
 

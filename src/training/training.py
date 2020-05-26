@@ -109,9 +109,10 @@ def train_model(model, dataloaders_dict, criterion, optimizer,
 
         print('\nepoch ', epoch)
         if optimizer is not None:
-            for param_group in optimizer.param_groups:
-                now_lr = param_group['lr']
-                print('lr :', now_lr)
+            for gr, param_group in enumerate(optimizer.param_groups):
+                print('lr :', param_group['lr'])
+                if gr == 0:
+                    now_lr = param_group['lr']
 
         log = trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, warm_sch, only_val)
 
