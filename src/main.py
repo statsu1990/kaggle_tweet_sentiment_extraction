@@ -26,4 +26,10 @@ import pipeline
 #pipeline.Model_v1_6_8().train()
 #pipeline.Model_v1_6_9().train()
 #pipeline.Model_v1_6_10().train()
-pipeline.Model_v1_6_11().train()
+#pipeline.Model_v1_6_11().train()
+
+#pipeline.Model_v1_7_0().train()
+#pipeline.Model_v1_8_0().train()
+#pipeline.Model_v1_8_1().train()
+pipeline.Model_v1_8_2().train()
+pipeline.Model_v1_8_3().train()
