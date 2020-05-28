@@ -91,7 +91,7 @@ class LinearHead(nn.Module):
         for i in range(len(ns)-1):
             self.layers.append(nn.Linear(ns[i], ns[i+1]))
             if i < len(ns)-2:
-                self.layers.append(nn.ReLU(inplace=True))
+                self.layers.append(nn.ReLU())
                 self.layers.append(nn.Dropout(dropout))
 
         nn.init.normal_(self.layers[-1].weight, std=0.02)
@@ -110,7 +110,7 @@ class Conv1dHead(nn.Module):
         self.conv_layers = []
         for i in range(n_conv):
             self.conv_layers.append(nn.Conv1d(n_channel, n_channel, k_size, stride=1, padding=k_size//2))
-            self.conv_layers.append(nn.ReLU(inplace=True))
+            self.conv_layers.append(nn.ReLU())
             self.conv_layers.append(nn.Dropout(dropout))
         self.conv_layers = nn.Sequential(*self.conv_layers)
 
@@ -130,6 +130,55 @@ class Conv1dHead(nn.Module):
         
         h = h.permute(0, 2, 1) # (Batch, Length, Feature)
         h = self.linear(h)
+        return h
+
+class SentimentAttentionHead(nn.Module):
+    def __init__(self, n_input, n_output, 
+                 n_element, reduction=4, dropout=0.1,
+                 sentiment_index=1,
+                 additional_head=None):
+        super(SentimentAttentionHead, self).__init__()
+        self.sentiment_index = sentiment_index
+        self.additional_head = additional_head
+
+        # param
+        self.weight = nn.Parameter(torch.Tensor(1, n_output, n_input, n_element))
+        self.bias = nn.Parameter(torch.Tensor(1, n_output, n_element))
+        if additional_head is None:
+            nn.init.normal_(self.weight, std=0.02)
+            nn.init.normal_(self.bias, 0)
+
+        # attention
+        self.sentiment_attn = nn.Sequential(nn.Linear(n_input, n_input//reduction), 
+                                            nn.ReLU(), 
+                                            nn.Dropout(dropout),
+                                            nn.Linear(n_input//reduction, n_element),
+                                            nn.Softmax(dim=-1))
+
+        if additional_head is not None:
+            self.relu = nn.ReLU()
+            self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        """
+        Args:
+            x : shape (Batch, Length, N_input)
+        """
+        sentiment_emb = x[:,self.sentiment_index]
+        attn = self.sentiment_attn(sentiment_emb) # (Batch, Element)
+        attn = attn.unsqueeze(1) # (Batch, 1, Element)
+        attn = attn.unsqueeze(1) # (Batch, 1, 1, Element)
+
+        b = torch.sum(attn * self.bias, dim=-1) # (Batch, 1, N_output)
+        w = torch.sum(attn * self.weight, dim=-1).permute(0,2,1) # (Batch, N_input, N_output)
+        
+        h = torch.bmm(x, w) + b # (Batch, Length, N_output)
+
+        if self.additional_head is not None:
+            h = self.relu(h)
+            h = self.dropout(h)
+            h = self.additional_head(h)
+
         return h
 
 class TweetModel2(nn.Module):
