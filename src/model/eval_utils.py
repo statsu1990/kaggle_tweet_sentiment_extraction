@@ -44,3 +44,15 @@ def calc_start_end_index_v2(start_probs, end_probs):
         end_pred = len(end_probs) - 1
 
     return start_pred, end_pred
+
+def calc_start_end_index_v3(start_probs, end_probs):
+    indexes = np.arange(len(start_probs))
+    
+    start_pred = np.round(np.sum(start_probs * indexes)).astype('int')
+    end_pred = np.round(np.sum(end_probs * indexes)).astype('int')
+
+    if start_pred > end_pred:
+        start_pred = 0
+        end_pred = len(end_probs) - 1
+
+    return start_pred, end_pred

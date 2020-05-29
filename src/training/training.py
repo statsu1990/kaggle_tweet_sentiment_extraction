@@ -98,7 +98,7 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
                     epoch_jaccard += jaccard_score
 
         # summary
-        epoch_loss = epoch_loss / len(dataloaders_dict[phase].dataset)
+        epoch_loss = epoch_loss / len(dataloaders_dict[phase])
         epoch_jaccard = epoch_jaccard / len(dataloaders_dict[phase].dataset)
             
         print('{:^5} | Loss: {:.4f} | Jaccard: {:.4f}'.format(
