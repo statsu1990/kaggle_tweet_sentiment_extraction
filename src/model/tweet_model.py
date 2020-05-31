@@ -185,7 +185,7 @@ class TweetModel2(nn.Module):
     def __init__(self, config, pretrained_model, 
                  num_use_hid_layers=3, pooling='average', learnable_weight=False, 
                  dropout=0.1,
-                 ans_idx_head=None):
+                 ans_idx_head=None, match_sent_head=None):
         super(TweetModel2, self).__init__()
         
         config = RobertaConfig.from_pretrained(config, output_hidden_states=True)    
@@ -196,6 +196,7 @@ class TweetModel2(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
         self.ans_idx_head = ans_idx_head
+        self.match_sent_head = match_sent_head
 
     def forward(self, input_ids, attention_mask):
         _, _, hs = self.roberta(input_ids, attention_mask) # 12 layers
@@ -209,7 +210,13 @@ class TweetModel2(nn.Module):
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
         
-        return start_logits, end_logits
+        # match sentiment
+        if self.match_sent_head is not None:
+            match_sent_logit = self.match_sent_head(x[:,0])
+        else:
+            match_sent_logit = None
+
+        return start_logits, end_logits, match_sent_logit
 
     def get_params(self):
         """

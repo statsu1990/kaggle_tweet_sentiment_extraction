@@ -1,10 +1,33 @@
+import random
+
+import numpy as np
 import torch
 import tokenizers
+
+
+def change_sentiment(row, p, sentiments):
+    """
+    sentiment : 'positive', 'negative', 'neutral'
+    """
+    #sentiments = np.array(['positive', 'negative', 'neutral'])
+
+    changed_row = row.copy()
+    match_sent = 1
+
+    if random.random() < p:
+        cand_sent = sentiments[sentiments != row.sentiment]
+        selected_sent = np.random.choice(cand_sent, 1)
+        changed_row.sentiment = selected_sent[0]
+        match_sent = 0
+
+    match_sent = torch.tensor(match_sent).float()
+    return changed_row, match_sent
 
 class TweetDataset(torch.utils.data.Dataset):
     def __init__(self, df, max_len=96, 
                  vocab_file='../input/roberta-base/vocab.json',
-                 merges_file='../input/roberta-base/merges.txt'
+                 merges_file='../input/roberta-base/merges.txt',
+                 change_sentiment_p=0.0,
                  ):
         self.df = df
         self.max_len = max_len
@@ -14,11 +37,19 @@ class TweetDataset(torch.utils.data.Dataset):
             merges_file=merges_file, 
             lowercase=True,
             add_prefix_space=True)
+        self.change_sentiment_p = change_sentiment_p
+
+        self.uniq_sentiment = np.unique(self.df['sentiment'].values)
 
     def __getitem__(self, index):
         data = {}
         row = self.df.iloc[index]
         
+        # augmentation
+        if self.labeled:
+            row, match_sent = change_sentiment(row, self.change_sentiment_p, self.uniq_sentiment)
+            data['match_sent'] = match_sent
+
         ids, masks, tweet, offsets, text_areas = self.get_input_data(row)
         data['ids'] = ids
         data['masks'] = masks
@@ -27,9 +58,16 @@ class TweetDataset(torch.utils.data.Dataset):
         data['text_areas'] = text_areas
         
         if self.labeled:
-            start_idx, end_idx = self.get_target_idx(row, tweet, offsets)
-            data['start_idx'] = start_idx
-            data['end_idx'] = end_idx
+            # match sentiment and text
+            if match_sent > 0:
+                start_idx, end_idx = self.get_target_idx(row, tweet, offsets)
+                data['start_idx'] = start_idx
+                data['end_idx'] = end_idx
+            else:
+                pad_id = 1
+                num_pad = torch.sum(torch.eq(ids, pad_id))
+                data['start_idx'] = len(ids) - 1 - int(num_pad)
+                data['end_idx'] = len(ids) - 1 - int(num_pad)
         
         return data
 
@@ -88,12 +126,13 @@ class TweetDataset(torch.utils.data.Dataset):
 def get_train_val_loaders(df, train_idx, val_idx, batch_size=8, 
                           max_len=96, 
                           vocab_file='../input/roberta-base/vocab.json',
-                          merges_file='../input/roberta-base/merges.txt'):
+                          merges_file='../input/roberta-base/merges.txt',
+                          change_sentiment_p=0.0):
     train_df = df.iloc[train_idx]
     val_df = df.iloc[val_idx]
 
     train_loader = torch.utils.data.DataLoader(
-        TweetDataset(train_df, max_len, vocab_file, merges_file), 
+        TweetDataset(train_df, max_len, vocab_file, merges_file, change_sentiment_p), 
         batch_size=batch_size, 
         shuffle=True, 
         drop_last=True)

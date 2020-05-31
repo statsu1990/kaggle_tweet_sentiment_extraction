@@ -13,7 +13,7 @@ def jaccard(str1, str2):
     a = set(str1.lower().split()) 
     b = set(str2.lower().split())
     c = a.intersection(b)
-    return float(len(c)) / (len(a) + len(b) - len(c))
+    return float(len(c)) / (len(a) + len(b) - len(c) + 1e-5)
 
 def compute_jaccard_score(text, start_idx, end_idx, start_logits, end_logits, offsets):
     start_pred, end_pred = calc_start_end_index_v1(start_logits, end_logits)

@@ -12,11 +12,8 @@ def remove_excessive_padding(data, pad_id=1):
     """
     ids = data['ids']
     masks = data['masks']
-    tweet = data['tweet']
     offsets = data['offsets']
     text_areas = data['text_areas'].numpy()
-    start_idx = data['start_idx']
-    end_idx = data['end_idx']
     """
     min_n_pad = torch.min(torch.sum(torch.eq(data['ids'], pad_id), dim=-1))
     max_len = data['ids'].size()[-1] - min_n_pad
@@ -60,13 +57,17 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
             text_areas = data['text_areas'].cuda()
             start_idx = data['start_idx'].cuda()
             end_idx = data['end_idx'].cuda()
+            match_sent = data['match_sent'].cuda()
 
             with torch.set_grad_enabled(phase == 'train'):
                 # pred, loss
-                start_logits, end_logits = model(ids, masks)
+                outputs = model(ids, masks)
+                start_logits, end_logits, match_sent_logits = outputs[0], outputs[1], outputs[2]
+
                 start_logits[~text_areas] = torch.finfo(torch.float32).min
                 end_logits[~text_areas] = torch.finfo(torch.float32).min
-                loss = criterion(start_logits, end_logits, start_idx, end_idx, text_areas) / grad_accum_steps
+
+                loss = criterion(start_logits, end_logits, start_idx, end_idx, text_areas, match_sent_logits, match_sent) / grad_accum_steps
                 
                 # update
                 if phase == 'train':
