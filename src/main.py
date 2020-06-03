@@ -64,6 +64,25 @@ import pipeline
 #pipeline.Model_v1_12_9().train()
 #pipeline.Model_v1_12_0().train()
 #pipeline.Model_v1_12_1().train()
-pipeline.Model_v1_12_2().train()
+#pipeline.Model_v1_12_2().train()
+#pipeline.Model_v1_13_0().train()
+#pipeline.Model_v1_13_1().train()
+#pipeline.Model_v1_13_2().train()
+#pipeline.Model_v1_13_3().train()
+#pipeline.Model_v1_13_4().train()
+#pipeline.Model_v1_13_5().train()
+#pipeline.Model_v1_13_6().train()
+#pipeline.Model_v1_13_5_1().train()
+#pipeline.Model_v1_13_6_1().train()
+#pipeline.Model_v1_13_7().train()
+#pipeline.Model_v1_13_8().train()
+#pipeline.Model_v1_13_9().train()
+#pipeline.Model_v1_13_10().train()
+#pipeline.Model_v1_13_11().train()
+pipeline.Model_v1_13_12().train()
+pipeline.Model_v1_13_13().train()
+pipeline.Model_v1_13_14().train()
+
+
 
 

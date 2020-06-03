@@ -26,4 +26,3 @@ def get_original_data(is_train=True):
 def remove_neutral(df):
     removed_df = df[(df['sentiment']=='positive') | (df['sentiment']=='negative')].reset_index(drop=True)
     return removed_df
-
