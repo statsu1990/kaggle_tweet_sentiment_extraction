@@ -288,62 +288,6 @@ class TweetDatasetWithAug(TweetDataset):
 
         return data
 
-class TweetDatasetPreMake(TweetDataset):
-    def __init__(self, df, max_len=96, 
-                 vocab_file='../input/roberta-base/vocab.json',
-                 merges_file='../input/roberta-base/merges.txt',
-                 change_sentiment_p=0.0,):
-        self.df = df
-        self.max_len = max_len
-        self.labeled = 'selected_text' in df
-        self.tokenizer = tokenizers.ByteLevelBPETokenizer(
-            vocab_file=vocab_file, 
-            merges_file=merges_file, 
-            lowercase=True,
-            add_prefix_space=True)
-        self.change_sentiment_p = 0.0
-        self.uniq_sentiment = np.unique(self.df['sentiment'].values)
-
-        self.dataset = self.make_dataset()
-
-    def make_data(self, index):
-        print(index)
-        data = {}
-        row = self.df.iloc[index]
-        
-        # augmentation
-        if self.labeled:
-            row, match_sent = change_sentiment(row, self.change_sentiment_p, self.uniq_sentiment)
-            data['match_sent'] = match_sent
-
-        ids, masks, tweet, offsets, text_areas = self.get_input_data(row)
-        data['ids'] = ids
-        data['masks'] = masks
-        data['tweet'] = tweet
-        data['offsets'] = offsets
-        data['text_areas'] = text_areas
-        
-        if self.labeled:
-            # match sentiment and text
-            if match_sent > 0:
-                start_idx, end_idx = self.get_target_idx(row, tweet, offsets)
-                data['start_idx'] = start_idx
-                data['end_idx'] = end_idx
-            else:
-                pad_id = 1
-                num_pad = torch.sum(torch.eq(ids, pad_id))
-                data['start_idx'] = len(ids) - 1 - int(num_pad)
-                data['end_idx'] = len(ids) - 1 - int(num_pad)
-        
-        return data
-
-    def make_dataset(self):
-        dataset = [self.make_data(i) for i in range(len(self.df))]
-        return dataset
-
-    def __getitem__(self, index):
-        return self.dataset[index]
-
 def get_train_val_loaders(df, train_idx, val_idx, batch_size=8, 
                           max_len=96, 
                           vocab_file='../input/roberta-base/vocab.json',
