@@ -83,7 +83,11 @@ import pipeline
 #pipeline.Model_v1_13_13().train()
 #pipeline.Model_v1_13_14().train()
 
-pipeline.Model_v1_14_0().train()
+#pipeline.Model_v1_14_0().train()
+#pipeline.Model_v1_15_0().train()
+#pipeline.Model_v1_15_1().train()
+pipeline.Model_v1_15_2().train()
+
 
 
 

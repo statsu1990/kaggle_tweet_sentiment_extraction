@@ -3,17 +3,23 @@ from torch import nn
 import torch.nn.functional as F
 import numpy as np
 
+def online_hard_example_mining(losses, ohem_rate):
+    n_he = int(losses.size()[0] * ohem_rate)
+    he_loss, index = losses.topk(n_he)
+    return he_loss, index
+
 class LabelSmoothingLoss(nn.Module):
     """
     reference : https://github.com/pytorch/pytorch/issues/7455#issuecomment-513735962
     """
-    def __init__(self, classes=None, smoothing=0.0, dim=-1, reduce=True):
+    def __init__(self, classes=None, smoothing=0.0, dim=-1, reduce=True, ohem_rate=None):
         super(LabelSmoothingLoss, self).__init__()
         self.confidence = 1.0 - smoothing
         self.smoothing = smoothing
         self.cls = classes
         self.dim = dim
         self.reduce = reduce
+        self.ohem_rate = ohem_rate
 
     def forward(self, pred, target, text_areas=None):
         if self.cls is None:
@@ -35,10 +41,18 @@ class LabelSmoothingLoss(nn.Module):
         if text_areas is None:
             loss = torch.sum(-true_dist * pred, dim=self.dim)
         else:
-            loss = torch.sum(- true_dist * pred * text_areas, dim=self.dim)
+            loss = torch.sum(-true_dist * pred * text_areas, dim=self.dim)
 
         if self.reduce:
-            loss = torch.mean(loss)
+            if self.ohem_rate is None:
+                loss = torch.mean(loss)
+            else:
+                target_logit = torch.gather(pred, 1, target.unsqueeze(1)).squeeze(1)
+                _, ohem_idx = online_hard_example_mining(-target_logit, self.ohem_rate)
+                loss = torch.mean(loss[ohem_idx])
+                
+                #loss, _ = online_hard_example_mining(loss, self.ohem_rate)
+                #loss = torch.mean(loss)
 
         return loss
 
@@ -46,9 +60,9 @@ class IndexLoss(nn.Module):
     """
     Loss for start and end indexes
     """
-    def __init__(self, classes=None, smoothing=0.0, dim=-1, reduce=True):
+    def __init__(self, classes=None, smoothing=0.0, dim=-1, reduce=True, ohem_rate=None):
         super(IndexLoss, self).__init__()
-        self.loss_func = LabelSmoothingLoss(classes, smoothing, dim, reduce)
+        self.loss_func = LabelSmoothingLoss(classes, smoothing, dim, reduce, ohem_rate)
 
     def forward(self, start_logits, end_logits, start_positions, end_positions, text_areas=None, *args, **kargs):
         start_loss = self.loss_func(start_logits, start_positions, text_areas)
