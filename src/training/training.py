@@ -61,7 +61,7 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
 
             with torch.set_grad_enabled(phase == 'train'):
                 # pred, loss
-                outputs = model(ids, masks)
+                outputs = model(ids, masks, start_idx)
                 start_logits, end_logits, match_sent_logits = outputs[0], outputs[1], outputs[2]
 
                 start_logits[~text_areas] = torch.finfo(torch.float32).min

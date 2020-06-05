@@ -99,7 +99,7 @@ class LinearHead(nn.Module):
 
         self.layers = nn.Sequential(*self.layers)
 
-    def forward(self, x):
+    def forward(self, x, *args):
         h = self.layers(x)
         return h
 
@@ -120,7 +120,7 @@ class Conv1dHead(nn.Module):
 
         return
 
-    def forward(self, x):
+    def forward(self, x, *args):
         """
         Args:
             x : shape (Batch, Length, Feature)
@@ -159,7 +159,7 @@ class SentimentAttentionHead(nn.Module):
             self.relu = nn.ReLU()
             self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x, *args):
         """
         Args:
             x : shape (Batch, Length, N_input)
@@ -181,6 +181,57 @@ class SentimentAttentionHead(nn.Module):
 
         return h
 
+class XLNetQAHead(nn.Module):
+    def __init__(self, n_input, start_n_top):
+        super(XLNetQAHead, self).__init__()
+        self.start_n_top = start_n_top
+
+        self.start_head = nn.Linear(n_input, 1)
+        self.end_head = nn.Sequential(nn.Linear(n_input*2, n_input), 
+                                      nn.Tanh(),
+                                      nn.LayerNorm(n_input),
+                                      nn.Linear(n_input, 1))
+
+    def forward(self, x, start_positions=None):
+        start_logits = self.start_head(x)
+
+        if self.training:
+            end_logits = self.calc_end_logits(x, start_positions)
+        else:
+            bsz, slen, hsz = x.size()
+            start_log_probs = F.softmax(start_logits.squeeze(-1), dim=-1)  # shape (bsz, slen)
+
+            start_top_log_probs, start_top_index = torch.topk(
+                start_log_probs, self.start_n_top, dim=-1
+            )  # shape (bsz, start_n_top)
+            start_top_index_exp = start_top_index.unsqueeze(-1).expand(-1, -1, hsz)  # shape (bsz, start_n_top, hsz)
+            start_states = torch.gather(x, -2, start_top_index_exp)  # shape (bsz, start_n_top, hsz)
+            start_states = start_states.unsqueeze(1).expand(-1, slen, -1, -1)  # shape (bsz, slen, start_n_top, hsz)
+
+            hidden_states_expanded = x.unsqueeze(2).expand_as(
+                start_states
+            )  # shape (bsz, slen, start_n_top, hsz)
+            end_logits = self.calc_end_logits(hidden_states_expanded, start_states=start_states)
+            end_logits = torch.sum(end_logits * start_top_log_probs.unsqueeze(1).unsqueeze(-1), dim=2)
+
+        return torch.cat([start_logits, end_logits], dim=-1)
+
+    def calc_end_logits(self, x, start_positions=None, start_states=None):
+        """
+        x : shape (Batch, Lenght, Feature)
+        start_positions : shape (Batch,)
+        """
+        if start_states is None:
+            slen, hsz = x.shape[-2:]
+            start_positions = start_positions[:, None, None].expand(-1, -1, hsz)  # shape (bsz, 1, hsz)
+            start_states = x.gather(-2, start_positions)  # shape (bsz, 1, hsz)
+            start_states = start_states.expand(-1, slen, -1)  # shape (bsz, slen, hsz)
+
+        cat_state = torch.cat([x, start_states], dim=-1)
+        end_logit = self.end_head(cat_state)
+        return end_logit
+
+
 class TweetModel2(nn.Module):
     def __init__(self, config, pretrained_model, 
                  num_use_hid_layers=3, pooling='average', learnable_weight=False, 
@@ -198,14 +249,14 @@ class TweetModel2(nn.Module):
         self.ans_idx_head = ans_idx_head
         self.match_sent_head = match_sent_head
 
-    def forward(self, input_ids, attention_mask):
+    def forward(self, input_ids, attention_mask, start_positions=None):
         _, _, hs = self.roberta(input_ids, attention_mask) # 12 layers
         
         x = self.hidden_layer_pooing(hs[-self.num_use_hid_layers:])
         x = self.dropout(x)
 
         # answer index
-        x_ans = self.ans_idx_head(x)
+        x_ans = self.ans_idx_head(x, start_positions)
         start_logits, end_logits = x_ans.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
