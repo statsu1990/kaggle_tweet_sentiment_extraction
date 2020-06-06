@@ -381,7 +381,7 @@ class TweetModel2(nn.Module):
         else:
             return start_logits, end_logits, match_sent_logit
 
-    def get_params(self):
+    def get_params(self, separate_names=None):
         """
         Returns:
             bert params:
@@ -389,9 +389,15 @@ class TweetModel2(nn.Module):
         """
         model_params = list(self.named_parameters())
 
-        bert_params = [p for n, p in model_params if "roberta" in n]
-        other_params = [p for n, p in model_params if not "roberta" in n]
+        if separate_names is None:
+            bert_params = [p for n, p in model_params if "roberta" in n]
+            other_params = [p for n, p in model_params if not "roberta" in n]
+            return bert_params, other_params
+        else:
+            bert_params = [p for n, p in model_params if "roberta" in n and not any(nd in n for nd in separate_names)]
+            bert_params_sep = [p for n, p in model_params if "roberta" in n and any(nd in n for nd in separate_names)]
+            other_params = [p for n, p in model_params if not "roberta" in n]
 
-        return bert_params, other_params
+            return bert_params, bert_params_sep, other_params
 
 
