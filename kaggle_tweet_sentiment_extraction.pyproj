@@ -41,6 +41,9 @@
     <Compile Include="src\pipeline.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="src\prediction\post_proc.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="src\prediction\predicting.py">
       <SubType>Code</SubType>
     </Compile>

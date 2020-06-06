@@ -1,4 +1,5 @@
 import numpy as np
+from prediction import post_proc
 
 def get_selected_text(text, start_idx, end_idx, offsets):
     selected_text = ""
@@ -20,6 +21,8 @@ def compute_jaccard_score(text, start_idx, end_idx, start_logits, end_logits, of
     pred = get_selected_text(text, start_pred, end_pred, offsets)
     true = get_selected_text(text, start_idx, end_idx, offsets)
     
+    #pred = post_proc.postproc_selected_text_v7(text, pred)
+
     score = jaccard(true, pred)
 
     #with open('../consideration/pred_text/pred_text.csv', mode='a', encoding='utf_8') as f:

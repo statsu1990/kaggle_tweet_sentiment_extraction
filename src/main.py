@@ -110,4 +110,6 @@ import pipeline
 #pipeline.Model_v1_18_2().train()
 #pipeline.Model_v1_18_3().train()
 #pipeline.Model_v1_18_4().train()
-pipeline.Model_v1_18_5().train()
+#pipeline.Model_v1_18_5().train()
+
+pipeline.Model_v1_19_0().train(only_val=True)
