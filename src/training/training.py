@@ -1,5 +1,6 @@
 import torch
 from tqdm import tqdm
+import numpy as np
 
 from model import eval_utils as evut
 from .scheduler import WarmUpLR
@@ -42,6 +43,9 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
         epoch_loss = 0.0
         epoch_jaccard = 0.0
             
+        n_high_start = 0
+        n_all = 0
+
         if phase == 'train':
             optimizer.zero_grad()
 
@@ -61,13 +65,22 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
 
             with torch.set_grad_enabled(phase == 'train'):
                 # pred, loss
-                outputs = model(ids, masks, start_idx)
-                start_logits, end_logits, match_sent_logits = outputs[0], outputs[1], outputs[2]
+                outputs = model(ids, masks, start_idx, text_areas)
+                if len(outputs) == 3:
+                    start_logits, end_logits, match_sent_logits = outputs[0], outputs[1], outputs[2]
+                    start_logits[~text_areas] = torch.finfo(torch.float32).min
+                    end_logits[~text_areas] = torch.finfo(torch.float32).min
+                    loss = criterion(start_logits, end_logits, start_idx, end_idx, text_areas, match_sent_logits, match_sent) / grad_accum_steps
 
-                start_logits[~text_areas] = torch.finfo(torch.float32).min
-                end_logits[~text_areas] = torch.finfo(torch.float32).min
-
-                loss = criterion(start_logits, end_logits, start_idx, end_idx, text_areas, match_sent_logits, match_sent) / grad_accum_steps
+                else:
+                    start_logits, end_logits, start_logits2, end_logits2, match_sent_logits = outputs[0], outputs[1], outputs[2], outputs[3], outputs[4]
+                    start_logits[~text_areas] = torch.finfo(torch.float32).min
+                    end_logits[~text_areas] = torch.finfo(torch.float32).min
+                    start_logits2[~text_areas] = torch.finfo(torch.float32).min
+                    end_logits2[~text_areas] = torch.finfo(torch.float32).min
+                    loss = criterion(start_logits, end_logits, start_idx, end_idx, text_areas, match_sent_logits, match_sent) / grad_accum_steps
+                    loss2 = criterion(start_logits2, end_logits2, start_idx, end_idx, text_areas, match_sent_logits, match_sent) / grad_accum_steps
+                    loss = (loss + loss2) * 0.5
                 
                 # update
                 if phase == 'train':
@@ -87,7 +100,10 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
                 end_idx = end_idx.cpu().detach().numpy()
                 start_logits = torch.softmax(start_logits, dim=1).cpu().detach().numpy()
                 end_logits = torch.softmax(end_logits, dim=1).cpu().detach().numpy()
-                    
+                
+                n_high_start += np.sum(np.argmax(start_logits, axis=1)>np.argmax(end_logits, axis=1))
+                n_all += len(start_idx)
+
                 for i in range(len(ids)):                        
                     jaccard_score = evut.compute_jaccard_score(
                         tweet[i],
@@ -104,7 +120,8 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
             
         print('{:^5} | Loss: {:.4f} | Jaccard: {:.4f}'.format(
             phase, epoch_loss, epoch_jaccard))
-    
+        print('n_high_start / n_all : {0} / {1}'.format(n_high_start, n_all))
+
         if phase == 'train':
             tr_loss = epoch_loss
             tr_score = epoch_jaccard

@@ -54,7 +54,7 @@ def predicter(models, dataloader):
         start_probs, end_probs = [], []
         for model in models:
             with torch.no_grad():
-                outputs = model(ids, masks)
+                outputs = model(ids, masks, None, text_areas)
                 start_logits, end_logits = outputs[0], outputs[1]
                 start_logits[~text_areas] = torch.finfo(torch.float32).min
                 end_logits[~text_areas] = torch.finfo(torch.float32).min

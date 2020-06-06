@@ -18,10 +18,14 @@ def jaccard(str1, str2):
 def compute_jaccard_score(text, start_idx, end_idx, start_logits, end_logits, offsets):
     start_pred, end_pred = calc_start_end_index_v1(start_logits, end_logits)
     pred = get_selected_text(text, start_pred, end_pred, offsets)
-        
     true = get_selected_text(text, start_idx, end_idx, offsets)
     
-    return jaccard(true, pred)
+    score = jaccard(true, pred)
+
+    #with open('../consideration/pred_text/pred_text.csv', mode='a', encoding='utf_8') as f:
+    #    f.write('"'+text+'"'+','+'"'+true+'"'+','+'"'+pred+'"'+','+str(score)+"\n")
+
+    return score
 
 def calc_start_end_index_v1(start_probs, end_probs):
     start_pred = np.argmax(start_probs)

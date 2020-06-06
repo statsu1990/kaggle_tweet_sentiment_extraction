@@ -187,19 +187,24 @@ class XLNetQAHead(nn.Module):
         self.start_n_top = start_n_top
 
         self.start_head = nn.Linear(n_input, 1)
-        self.end_head = nn.Sequential(nn.Linear(n_input*2, n_input), 
-                                      nn.Tanh(),
-                                      nn.LayerNorm(n_input),
-                                      nn.Linear(n_input, 1))
+        self.end_head = nn.Sequential(#nn.Linear(n_input*2, n_input),
+                                      nn.Linear(n_input*2, 1),
+                                      #nn.Tanh(),
+                                      #nn.ReLU(),
+                                      #nn.LayerNorm(n_input),
+                                      #nn.Linear(n_input, 1)
+                                      )
 
-    def forward(self, x, start_positions=None):
+    def forward(self, x, start_positions=None, text_areas=None, *args):
         start_logits = self.start_head(x)
 
         if self.training:
             end_logits = self.calc_end_logits(x, start_positions)
         else:
             bsz, slen, hsz = x.size()
-            start_log_probs = F.softmax(start_logits.squeeze(-1), dim=-1)  # shape (bsz, slen)
+            start_logits_in_text = start_logits
+            start_logits_in_text[~text_areas] = torch.finfo(torch.float32).min
+            start_log_probs = F.softmax(start_logits_in_text.squeeze(-1), dim=-1)  # shape (bsz, slen)
 
             start_top_log_probs, start_top_index = torch.topk(
                 start_log_probs, self.start_n_top, dim=-1
@@ -231,6 +236,100 @@ class XLNetQAHead(nn.Module):
         end_logit = self.end_head(cat_state)
         return end_logit
 
+class XLNetQAHead2(nn.Module):
+    def __init__(self, n_input, start_n_top):
+        super(XLNetQAHead2, self).__init__()
+        self.start_n_top = start_n_top
+
+        self.start_head = nn.Linear(n_input, 1)
+        self.end_head = nn.Sequential(nn.Linear(n_input*2, 1),)
+
+    def forward(self, x, start_positions=None, text_areas=None, *args):
+        start_logits = self.start_head(x)
+
+        bsz, slen, hsz = x.size()
+        start_logits_in_text = start_logits
+        start_logits_in_text[~text_areas] = torch.finfo(torch.float32).min
+        start_log_probs = F.softmax(start_logits_in_text.squeeze(-1), dim=-1)  # shape (bsz, slen)
+
+        start_top_log_probs, start_top_index = torch.topk(
+            start_log_probs, self.start_n_top, dim=-1
+        )  # shape (bsz, start_n_top)
+        start_top_index_exp = start_top_index.unsqueeze(-1).expand(-1, -1, hsz)  # shape (bsz, start_n_top, hsz)
+        start_states = torch.gather(x, -2, start_top_index_exp)  # shape (bsz, start_n_top, hsz)
+        start_states = start_states.unsqueeze(1).expand(-1, slen, -1, -1)  # shape (bsz, slen, start_n_top, hsz)
+
+        hidden_states_expanded = x.unsqueeze(2).expand_as(
+            start_states
+        )  # shape (bsz, slen, start_n_top, hsz)
+        end_logits = self.calc_end_logits(hidden_states_expanded, start_states=start_states)
+        end_logits = torch.sum(end_logits * start_top_log_probs.unsqueeze(1).unsqueeze(-1), dim=2)
+
+        return torch.cat([start_logits, end_logits], dim=-1)
+
+    def calc_end_logits(self, x, start_positions=None, start_states=None):
+        """
+        x : shape (Batch, Lenght, Feature)
+        start_positions : shape (Batch,)
+        """
+        if start_states is None:
+            slen, hsz = x.shape[-2:]
+            start_positions = start_positions[:, None, None].expand(-1, -1, hsz)  # shape (bsz, 1, hsz)
+            start_states = x.gather(-2, start_positions)  # shape (bsz, 1, hsz)
+            start_states = start_states.expand(-1, slen, -1)  # shape (bsz, slen, hsz)
+
+        cat_state = torch.cat([x, start_states], dim=-1)
+        end_logit = self.end_head(cat_state)
+        return end_logit
+
+class XLNetQAHead3(nn.Module):
+    def __init__(self, n_input, n_top):
+        super(XLNetQAHead3, self).__init__()
+        self.n_top = n_top
+
+        self.start_head1 = nn.Linear(n_input, 1)
+        self.end_head1 = nn.Linear(n_input, 1)
+        self.start_head2 = nn.Sequential(nn.Linear(n_input*2, 1),)
+        self.end_head2 = nn.Sequential(nn.Linear(n_input*2, 1),)
+
+    def forward(self, x, start_positions=None, text_areas=None, *args):
+        start_logits1 = self.start_head1(x)
+        end_logits1 = self.end_head1(x)
+
+        start_logits_in_text = start_logits1.clone()
+        start_logits_in_text[~text_areas] = torch.finfo(torch.float32).min
+        end_logits_in_text = end_logits1.clone()
+        end_logits_in_text[~text_areas] = torch.finfo(torch.float32).min
+
+        start_logits2 = self.calc_target_logits(x, end_logits_in_text, self.start_head2)
+        end_logits2 = self.calc_target_logits(x, start_logits_in_text, self.end_head2)
+
+        if self.training:
+            return torch.cat([start_logits2, end_logits2], dim=-1), torch.cat([start_logits1, end_logits1], dim=-1)
+        else:
+            return torch.cat([start_logits2, end_logits2], dim=-1)
+
+    def calc_target_logits(self, x, base_logit, head):
+        bsz, slen, hsz = x.size()
+        base_log_probs = F.softmax(base_logit.squeeze(-1), dim=-1)  # shape (bsz, slen)
+
+        base_top_log_probs, base_top_index = torch.topk(
+            base_log_probs, self.n_top, dim=-1
+        )  # shape (bsz, n_top)
+        base_top_index_exp = base_top_index.unsqueeze(-1).expand(-1, -1, hsz)  # shape (bsz, n_top, hsz)
+        base_states = torch.gather(x, -2, base_top_index_exp)  # shape (bsz, n_top, hsz)
+        base_states = base_states.unsqueeze(1).expand(-1, slen, -1, -1)  # shape (bsz, slen, n_top, hsz)
+
+        hidden_states_expanded = x.unsqueeze(2).expand_as(
+            base_states
+        )  # shape (bsz, slen, n_top, hsz)
+
+        cat_state = torch.cat([hidden_states_expanded, base_states], dim=-1)
+        tg_logits = head(cat_state)
+
+        tg_logits = torch.sum(tg_logits * base_top_log_probs.unsqueeze(1).unsqueeze(-1), dim=2)
+
+        return tg_logits
 
 class TweetModel2(nn.Module):
     def __init__(self, config, pretrained_model, 
@@ -249,17 +348,27 @@ class TweetModel2(nn.Module):
         self.ans_idx_head = ans_idx_head
         self.match_sent_head = match_sent_head
 
-    def forward(self, input_ids, attention_mask, start_positions=None):
+    def forward(self, input_ids, attention_mask, start_positions=None, text_areas=None):
         _, _, hs = self.roberta(input_ids, attention_mask) # 12 layers
         
         x = self.hidden_layer_pooing(hs[-self.num_use_hid_layers:])
         x = self.dropout(x)
 
         # answer index
-        x_ans = self.ans_idx_head(x, start_positions)
-        start_logits, end_logits = x_ans.split(1, dim=-1)
-        start_logits = start_logits.squeeze(-1)
-        end_logits = end_logits.squeeze(-1)
+        x_ans = self.ans_idx_head(x, start_positions, text_areas)
+
+        if type(x_ans) == tuple:
+            start_logits, end_logits = x_ans[0].split(1, dim=-1)
+            start_logits = start_logits.squeeze(-1)
+            end_logits = end_logits.squeeze(-1)
+
+            start_logits2, end_logits2 = x_ans[1].split(1, dim=-1)
+            start_logits2 = start_logits2.squeeze(-1)
+            end_logits2 = end_logits2.squeeze(-1)
+        else:
+            start_logits, end_logits = x_ans.split(1, dim=-1)
+            start_logits = start_logits.squeeze(-1)
+            end_logits = end_logits.squeeze(-1)
         
         # match sentiment
         if self.match_sent_head is not None:
@@ -267,7 +376,10 @@ class TweetModel2(nn.Module):
         else:
             match_sent_logit = None
 
-        return start_logits, end_logits, match_sent_logit
+        if type(x_ans) == tuple:
+            return start_logits, end_logits, start_logits2, end_logits2, match_sent_logit
+        else:
+            return start_logits, end_logits, match_sent_logit
 
     def get_params(self):
         """
@@ -281,4 +393,5 @@ class TweetModel2(nn.Module):
         other_params = [p for n, p in model_params if not "roberta" in n]
 
         return bert_params, other_params
+
 
