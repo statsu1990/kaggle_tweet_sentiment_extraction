@@ -94,8 +94,14 @@ import pipeline
 #pipeline.Model_v1_16_3().train()
 #pipeline.Model_v1_16_4().train()
 #pipeline.Model_v1_16_5().train()
-pipeline.Model_v1_16_6().train()
-pipeline.Model_v1_16_7().train()
-pipeline.Model_v1_16_8().train()
+#pipeline.Model_v1_16_6().train()
+#pipeline.Model_v1_16_7().train()
+#pipeline.Model_v1_16_8().train()
 
+pipeline.Model_v1_17_0().train()
+pipeline.Model_v1_17_1().train()
+pipeline.Model_v1_17_2().train()
+pipeline.Model_v1_17_3().train()
+pipeline.Model_v1_17_4().train()
+pipeline.Model_v1_17_5().train()
 
