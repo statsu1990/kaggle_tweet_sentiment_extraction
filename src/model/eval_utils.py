@@ -66,3 +66,74 @@ def calc_start_end_index_v3(start_probs, end_probs):
         end_pred = len(end_probs) - 1
 
     return start_pred, end_pred
+
+def calc_start_end_index_v4(start_probs, end_probs):
+    """
+    calc_start_end_index_v1 : 0.558128
+    calc_start_end_index_v4 : 0.558228
+    """
+    start_pred = np.argsort(start_probs)[::-1][0]
+    end_pred = np.argsort(end_probs)[::-1][0]
+
+    start_pred2 = np.argsort(start_probs)[::-1][1]
+    end_pred2 = np.argsort(end_probs)[::-1][1]
+
+    if start_pred > end_pred:
+        start_pred = min([start_pred, start_pred2])
+        end_pred = max([end_pred, end_pred2])
+        #start_pred = start_pred2
+        #end_pred = end_pred2
+
+    if start_pred > end_pred:
+        print(start_pred, end_pred)
+        start_pred = 0
+        end_pred = len(end_probs) - 1
+
+    return start_pred, end_pred
+
+def calc_start_end_index_v5(start_probs, end_probs):
+    start_pred = np.argsort(start_probs)[::-1][0]
+    end_pred = np.argsort(end_probs)[::-1][0]
+
+    start_pred2 = np.argsort(start_probs)[::-1][1]
+    end_pred2 = np.argsort(end_probs)[::-1][1]
+
+    if start_probs[start_pred] - start_probs[start_pred2] < 0.01:
+        #print(start_pred, start_pred2)
+        #start_pred = start_pred2
+        start_pred = min([start_pred, start_pred2])
+        #start_pred = int((start_pred + start_pred2)*0.5)
+    if end_probs[end_pred] - end_probs[end_pred2] < 0.01:
+        #end_pred = end_pred2
+        end_pred = max([end_pred, end_pred2])
+        #end_pred = int((end_pred + end_pred2)*0.5)
+
+    if start_pred > end_pred:
+        start_pred = 0
+        end_pred = len(end_probs) - 1
+
+    return start_pred, end_pred
+
+def calc_start_end_index_v6(start_probs, end_probs):
+    start_pred = np.argsort(start_probs)[::-1][0]
+    end_pred = np.argsort(end_probs)[::-1][0]
+
+    start_pred2 = np.argsort(start_probs)[::-1][1]
+    end_pred2 = np.argsort(end_probs)[::-1][1]
+
+    if start_probs[start_pred] < 0.2:
+        print(start_pred, start_pred2)
+        #start_pred = start_pred2
+        start_pred = min([start_pred, start_pred2])
+        #start_pred = int((start_pred + start_pred2)*0.5)
+    if end_probs[end_pred] < 0.2:
+        #end_pred = end_pred2
+        end_pred = max([end_pred, end_pred2])
+        #end_pred = int((end_pred + end_pred2)*0.5)
+
+    if start_pred > end_pred:
+        start_pred = 0
+        end_pred = len(end_probs) - 1
+
+    return start_pred, end_pred
+
