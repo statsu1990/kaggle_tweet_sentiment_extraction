@@ -156,6 +156,10 @@ def postproc_selected_text_v1(text, selected_text):
     #    print(selected_text)
     #    print()
 
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
+
     return slc_txt
 
 def postproc_selected_text_v2(text, selected_text):
@@ -198,6 +202,10 @@ def postproc_selected_text_v2(text, selected_text):
     #    print(slc_txt)
     #    print(selected_text)
     #    print()
+
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
 
     return slc_txt
 
@@ -242,6 +250,10 @@ def postproc_selected_text_v3(text, selected_text):
     #    print(selected_text)
     #    print()
 
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
+
     return slc_txt
 
 def postproc_selected_text_v4(text, selected_text):
@@ -260,6 +272,10 @@ def postproc_selected_text_v4(text, selected_text):
     #    print(slc_txt)
     #    print(selected_text)
     #    print()
+
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
 
     return slc_txt
 
@@ -284,6 +300,10 @@ def postproc_selected_text_v5(text, selected_text):
     #    print(selected_text)
     #    print()
 
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
+
     return slc_txt
 
 def postproc_selected_text_v6(text, selected_text):
@@ -307,6 +327,10 @@ def postproc_selected_text_v6(text, selected_text):
     #    print(slc_txt)
     #    print(selected_text)
     #    print()
+
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
 
     return slc_txt
 
@@ -352,6 +376,10 @@ def postproc_selected_text_v7(text, selected_text):
     #    print(selected_text)
     #    print()
 
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
+
     return slc_txt
 
 def postproc_selected_text_v8(text, selected_text):
@@ -377,6 +405,10 @@ def postproc_selected_text_v8(text, selected_text):
         print(slc_txt)
         print(selected_text)
         print()
+
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
 
     return slc_txt
 
@@ -483,6 +515,10 @@ def postproc_selected_text_v9(text, selected_text):
     #    print(selected_text)
     #    print()
 
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
+
     return slc_txt
 
 def postproc_selected_text_v10(text, selected_text):
@@ -518,6 +554,10 @@ def postproc_selected_text_v10(text, selected_text):
     #    print(slc_txt)
     #    print(selected_text)
     #    print()
+
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
 
     return slc_txt
 
@@ -575,6 +615,10 @@ def postproc_selected_text_v11(text, selected_text):
     #    print(selected_text)
     #    print()
 
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
+
     return slc_txt
 
 def postproc_selected_text_v12(text, selected_text):
@@ -628,6 +672,10 @@ def postproc_selected_text_v12(text, selected_text):
     #    print(selected_text)
     #    print()
 
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
+
     return slc_txt
 
 def postproc_selected_text_v13(text, selected_text):
@@ -680,6 +728,10 @@ def postproc_selected_text_v13(text, selected_text):
     #    print(slc_txt)
     #    print(selected_text)
     #    print()
+
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
 
     return slc_txt
 
@@ -736,6 +788,10 @@ def postproc_selected_text_v14(text, selected_text):
     #    print(slc_txt)
     #    print(selected_text)
     #    print()
+
+    if len(slc_txt) == 0:
+        slc_txt = selected_text
+        print(selected_text)
 
     return slc_txt
 

@@ -24,7 +24,7 @@ def compute_jaccard_score(text, start_idx, end_idx, start_logits, end_logits, of
     #pred = post_proc.postproc_selected_text_v7(text, pred)
     #pred = post_proc.postproc_selected_text_v12(text, pred)
     #pred = post_proc.postproc_selected_text_v13(text, pred)
-    #pred = post_proc.postproc_selected_text_v14(text, pred)
+    pred = post_proc.postproc_selected_text_v14(text, pred)
 
     score = jaccard(true, pred)
 
