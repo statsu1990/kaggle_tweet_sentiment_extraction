@@ -1,12 +1,18 @@
 import copy
 
-def delete_word(selected_text, words, before=True, after=True, n_word_lim=None):
+def delete_word(selected_text, words, before=True, after=True, n_word_lim=None, slc_noteq_txt=False, text=None):
     """
     If the first or last word in selected_text is one of the words, it is removed.
     """
     slc_txt = str(copy.copy(selected_text))
     splt_slc_text = slc_txt.split()
     
+    if slc_noteq_txt:
+        tmp_txt = text if text[0] != " " else text[1:]
+        tmp_slc_txt = selected_text if selected_text[0] != " " else selected_text[1:]
+        if tmp_txt == tmp_slc_txt:
+            return slc_txt
+
     if n_word_lim is None or len(splt_slc_text) <= n_word_lim:
         if before:
             if len(splt_slc_text) > 0:
@@ -371,6 +377,365 @@ def postproc_selected_text_v8(text, selected_text):
         print(slc_txt)
         print(selected_text)
         print()
+
+    return slc_txt
+
+def postproc_selected_text_v9(text, selected_text):
+    slc_txt = copy.copy(selected_text)
+    if slc_txt[0] == " ":
+        slc_txt = slc_txt[1:]
+
+
+    # all 0.558128 -> 0., -0.
+
+    # 0.558128 -> 0.5597
+    #n_word_lim = 2
+    #slc_txt = delete_word(slc_txt, ["i"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558331
+    #n_word_lim = 5 # 0.558128 -> 0.558191
+    #slc_txt = delete_word(slc_txt, ["you"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558115
+    #n_word_lim = 5 # 0.558128 -> 0.557590
+    #slc_txt = delete_word(slc_txt, ["it"], before=True, after=False, n_word_lim=n_word_lim)
+
+    # 0.558128 -> 0.558290
+    #n_word_lim = 2
+    #slc_txt = delete_word(slc_txt, ["the"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558128
+    #n_word_lim = 5 # 0.558128 -> 0.558128
+    #n_word_lim = None # 0.558128 -> 0.558128
+    #slc_txt = delete_word(slc_txt, ["an"], before=True, after=False, n_word_lim=n_word_lim)
+    
+    #n_word_lim = 2 # 0.558128 -> 0.558345
+    #n_word_lim = 5 # 0.558128 -> 0.558365
+    #n_word_lim = None # 0.558128 -> 0.558304
+    #slc_txt = delete_word(slc_txt, ["is"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558128
+    #n_word_lim = 5 # 0.558128 -> 0.558145
+    #slc_txt = delete_word(slc_txt, ["are"], before=True, after=False, n_word_lim=n_word_lim)
+    
+    #n_word_lim = 2 # 0.558128 -> 0.558128
+    #n_word_lim = 5 # 0.558128 -> 0.558161
+    #slc_txt = delete_word(slc_txt, ["am"], before=True, after=False, n_word_lim=n_word_lim)
+    
+    #n_word_lim = 2 # 0.558128 -> 0.558331
+    #n_word_lim = 5 # 0.558128 -> 0.558331
+    #slc_txt = delete_word(slc_txt, ["be"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558088
+    #n_word_lim = 5 # 0.558128 -> 0.558122
+    #slc_txt = delete_word(slc_txt, ["was"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558026
+    #n_word_lim = 5 # 0.558128 -> 0.557658
+    #slc_txt = delete_word(slc_txt, ["my"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558128
+    #n_word_lim = 5 # 0.558128 -> 0.558161
+    #slc_txt = delete_word(slc_txt, ["me"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558128
+    #n_word_lim = 5 # 0.558128 -> 0.558071
+    #slc_txt = delete_word(slc_txt, ["and"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558128
+    #n_word_lim = 5 # 0.558128 -> 0.558189
+    #n_word_lim = None # 0.558128 -> 0.558284
+    #slc_txt = delete_word(slc_txt, ["but"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558229
+    #n_word_lim = 5 # 0.558128 -> 0.558229
+    #slc_txt = delete_word(slc_txt, ["to"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558229
+    #n_word_lim = 5 # 0.558128 -> 0.558280
+    #slc_txt = delete_word(slc_txt, ["just"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558087
+    #n_word_lim = 5 # 0.558128 -> 0.558019
+    #slc_txt = delete_word(slc_txt, ["too"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558181
+    #n_word_lim = 5 # 0.558128 -> 0.558134
+    #slc_txt = delete_word(slc_txt, ["have"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558200
+    #n_word_lim = 5 # 0.558128 -> 0.558149
+    #slc_txt = delete_word(slc_txt, ["feel"], before=True, after=False, n_word_lim=n_word_lim)
+
+    #n_word_lim = 2 # 0.558128 -> 0.558061
+    #n_word_lim = 5 # 0.558128 -> 0.557871
+    #slc_txt = delete_word(slc_txt, ["feeling"], before=True, after=False, n_word_lim=n_word_lim)
+
+
+    #if selected_text[0] == " ":
+    #    comp_slc_txt = selected_text[1:]
+    #else:
+    #    comp_slc_txt = selected_text
+    #if slc_txt != comp_slc_txt:
+    #    print()
+    #    print(text)
+    #    print(slc_txt)
+    #    print(selected_text)
+    #    print()
+
+    return slc_txt
+
+def postproc_selected_text_v10(text, selected_text):
+    slc_txt = copy.copy(selected_text)
+    if slc_txt[0] == " ":
+        slc_txt = slc_txt[1:]
+
+
+    # all 0.558128 -> 0., -0.
+
+    #n_word_lim = 5
+    #slc_noteq_txt = False # 0.558128 -> 0.556191
+    #slc_noteq_txt = True # 0.558128 -> 0.557165
+    
+    #n_word_lim = 3
+    #slc_noteq_txt = False # 0.558128 -> 0.558683
+    #slc_noteq_txt = True # 0.558128 -> 0.558989
+    #slc_txt = delete_word(slc_txt, ["i"], before=True, after=False, n_word_lim=n_word_lim, slc_noteq_txt=slc_noteq_txt, text=text)
+
+    n_word_lim = 2
+    #slc_noteq_txt = False # 0.558128 -> 0.559760
+    slc_noteq_txt = True # 0.558128 -> 0.559862
+    slc_txt = delete_word(slc_txt, ["i"], before=True, after=False, n_word_lim=n_word_lim, slc_noteq_txt=slc_noteq_txt, text=text)
+
+
+    #if selected_text[0] == " ":
+    #    comp_slc_txt = selected_text[1:]
+    #else:
+    #    comp_slc_txt = selected_text
+    #if slc_txt != comp_slc_txt:
+    #    print()
+    #    print(text)
+    #    print(slc_txt)
+    #    print(selected_text)
+    #    print()
+
+    return slc_txt
+
+def postproc_selected_text_v11(text, selected_text):
+    slc_txt = copy.copy(selected_text)
+    if slc_txt[0] == " ":
+        slc_txt = slc_txt[1:]
+
+    # all 0.558128 -> 0.562079, +0.0039
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_char_recursive(text, slc_txt, ["."], before=False, after=True, n_word_lim=5)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_char_recursive(text, slc_txt, [","], before=False, after=True, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["is", "are", "am", "be"], before=True, after=False, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["i", "I", "im", "Im", "i'm", "I'm", "iam", "Iam"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["you"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["me"], before=True, after=False, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["but"], before=True, after=False, n_word_lim=None)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["to"], before=True, after=False, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["just"], before=True, after=False, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["have"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = delete_word(slc_txt, ["the", "a", "an"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = delete_word(slc_txt, ["really"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["i", "I", "im", "Im", "i'm", "I'm", "iam", "Iam"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_word(text, slc_txt, ["super"], before=True, after=False, n_word_lim=5)
+
+    #if slc_txt != selected_text[1:]:
+    #    print(slc_txt)
+    #    print(selected_text)
+    #    print()
+
+    return slc_txt
+
+def postproc_selected_text_v12(text, selected_text):
+    slc_txt = copy.copy(selected_text)
+    if slc_txt[0] == " ":
+        slc_txt = slc_txt[1:]
+
+    # all 0.558128 -> 0.562079, +0.0039
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_char_recursive(text, slc_txt, ["."], before=False, after=True, n_word_lim=5)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_char_recursive(text, slc_txt, [","], before=False, after=True, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["but"], before=True, after=False, n_word_lim=None)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["i", "I", "im", "Im", "i'm", "I'm", "iam", "Iam"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["you"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["is", "are", "am", "be"], before=True, after=False, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["have"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = delete_word(slc_txt, ["really"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["me"], before=True, after=False, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["to"], before=True, after=False, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["just"], before=True, after=False, n_word_lim=5)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = delete_word(slc_txt, ["the", "a", "an"], before=True, after=False, n_word_lim=2)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_word(text, slc_txt, ["super"], before=True, after=False, n_word_lim=5)
+
+    #if slc_txt != selected_text[1:]:
+    #    print(slc_txt)
+    #    print(selected_text)
+    #    print()
+
+    return slc_txt
+
+def postproc_selected_text_v13(text, selected_text):
+    slc_txt = copy.copy(selected_text)
+    if slc_txt[0] == " ":
+        slc_txt = slc_txt[1:]
+
+    # all 0.558128 -> 0.562398, +0.4270
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_char_recursive(text, slc_txt, ["."], before=False, after=True, n_word_lim=5)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_char_recursive(text, slc_txt, [","], before=False, after=True, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["but"], before=True, after=False, n_word_lim=None, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["i", "I", "im", "Im", "i'm", "I'm", "iam", "Iam"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["you"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["is", "are", "am", "be"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["have"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = delete_word(slc_txt, ["really"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["me"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["to"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["just"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = delete_word(slc_txt, ["the", "a", "an"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_word(text, slc_txt, ["super"], before=True, after=False, n_word_lim=5)
+
+    #if slc_txt != selected_text[1:]:
+    #    print(slc_txt)
+    #    print(selected_text)
+    #    print()
+
+    return slc_txt
+
+def postproc_selected_text_v14(text, selected_text):
+    slc_txt = copy.copy(selected_text)
+    if slc_txt[0] == " ":
+        slc_txt = slc_txt[1:]
+
+    slc_txt = slc_txt.lower()
+    txt = str(text).lower()
+
+    # all 0.558128 -> 0.562398, +0.004270
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_char_recursive(text, slc_txt, ["."], before=False, after=True, n_word_lim=5)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_char_recursive(text, slc_txt, [","], before=False, after=True, n_word_lim=5)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["but"], before=True, after=False, n_word_lim=None, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["i", "im", "i'm", "iam"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["you"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["is", "are", "am", "be"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["have"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = delete_word(slc_txt, ["really"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["me"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["to"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., -0.
+    slc_txt = delete_word(slc_txt, ["just"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = delete_word(slc_txt, ["the", "a", "an"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+
+    # 0.558128 -> 0., +0.
+    slc_txt = add_word(text, slc_txt, ["super"], before=True, after=False, n_word_lim=5)
+
+    #if slc_txt != selected_text[1:]:
+    #    print(slc_txt)
+    #    print(selected_text)
+    #    print()
 
     return slc_txt
 
