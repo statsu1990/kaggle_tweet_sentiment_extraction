@@ -99,13 +99,13 @@ def add_chars(text, selected_text, chars, before=True, after=True, n_word_lim=No
         if before:
             if len(before_text) > 0:
                 for ch in chars:
-                    if ch == before_text[-len(ch):]:
+                    if ch == before_text[-len(ch):] and ch[-1] != before_text[-len(ch)-1]:
                         slc_txt = ch + slc_txt
                         break
         if after:
             if len(after_text) > 0:
                 for ch in chars:
-                    if ch == after_text[:len(ch)]:
+                    if ch == after_text[:len(ch)] and ch[0] != after_text[len(ch)]:
                         slc_txt = slc_txt + ch
                         break
         
@@ -345,6 +345,32 @@ def postproc_selected_text_v7(text, selected_text):
     #    print(slc_txt)
     #    print(selected_text)
     #    print()
+
+    return slc_txt
+
+def postproc_selected_text_v8(text, selected_text):
+    slc_txt = copy.copy(selected_text)
+    if slc_txt[0] == " ":
+        slc_txt = slc_txt[1:]
+
+    n_word_lim = 1
+
+    # all 0.558128 -> 0., -0.
+
+    # 0.558128 -> 0., -0.
+    slc_txt = add_chars(text, slc_txt, ["..."], before=True, after=False, n_word_lim=n_word_lim)
+    #slc_txt = add_char_recursive(text, slc_txt, ["."], before=True, after=False, n_word_lim=n_word_lim)
+
+    if selected_text[0] == " ":
+        comp_slc_txt = selected_text[1:]
+    else:
+        comp_slc_txt = selected_text
+    if slc_txt != comp_slc_txt:
+        print()
+        print(text)
+        print(slc_txt)
+        print(selected_text)
+        print()
 
     return slc_txt
 
