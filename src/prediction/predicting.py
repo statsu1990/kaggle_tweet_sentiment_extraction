@@ -27,7 +27,7 @@ def remove_excessive_padding(data, pad_id=1):
 
     return data
 
-def predicter(models, dataloader):
+def predicter(models, dataloader, remove_pad=True):
     """
     Args:
         models : list of models
@@ -41,7 +41,8 @@ def predicter(models, dataloader):
 
     for batch_idx, data in enumerate(tqdm(dataloader)):
         # remove excessive padding
-        data = remove_excessive_padding(data)
+        if remove_pad:
+            data = remove_excessive_padding(data)
 
         # data
         ids = data['ids'].cuda()

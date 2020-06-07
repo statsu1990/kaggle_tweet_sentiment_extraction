@@ -3257,3 +3257,152 @@ class Model_v1_20_0():
 
         pred_utils.make_submission(preds, self.FILENAME_HEAD)
         return
+
+class Model_v1_21_0():
+    """
+    fork Model_v1_18_1
+    cv 0. (only posi and nega), lb 
+    not aplly remove_excessive_padding
+
+    weight decay (hidden(LN, bias)=0.0, hidden(other)=0.01, head=0.0001)
+    multi linear head (hidden=[128], dropout=0.1)
+    dropout=0.1
+    Learnable weight of averaging hidden layer, n_hid=12, average, learn=False
+    implement consideration of text_areas
+    [No use]implement remove_excessive_padding
+    train only positive and negative
+    label smoothing 0.05
+    lr 1e-5
+    different learning rate (x30) 
+    """
+    def __init__(self):
+        self.set_config()
+        return
+
+    def set_config(self):
+        self.SAVE_DIR = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.SAVE_DIR, exist_ok=True)
+        self.FILENAME_HEAD = os.path.join(self.SAVE_DIR, '')
+
+        self.NUM_FOLD = 3
+        self.CHECK_POINT = [self.FILENAME_HEAD+'checkpoint_fold'+str(i)+'.pth' for i in range(self.NUM_FOLD)]
+
+        # data
+        self.PREMAKE_DATASET = True
+        self.TRAIN_ONLY_POSI_NEGA = True
+
+        # constants
+        self.MAX_LEN = 96
+        self.APPLY_REMOVE_PAD = False
+
+        # pretrained
+        self.PRETRAINED_DIR = '../input/roberta-base'
+        self.VOCAB_FILE = os.path.join(self.PRETRAINED_DIR, 'vocab.json')
+        self.MERGES_FILE = os.path.join(self.PRETRAINED_DIR, 'merges.txt')
+        return
+
+    def get_model(self):
+        MODEL_CONFIG = os.path.join(self.PRETRAINED_DIR, 'config.json')
+        PRETRAINED_MODEL = os.path.join(self.PRETRAINED_DIR, 'pytorch_model.bin')
+
+        NS_HIDDEN = [128]
+        DROPOUT = 0.1
+        ans_idx_head = tweet_model.LinearHead(768, 2, NS_HIDDEN, DROPOUT)
+
+        NUM_USE_HID_LAYERS = 12
+        POOLING = 'average' # 'average', 'max'
+        LEARNABLE_WEIGHT = False
+        DROPOUT = 0.1
+
+        model = tweet_model.TweetModel2(MODEL_CONFIG, PRETRAINED_MODEL, 
+                                       NUM_USE_HID_LAYERS, POOLING, LEARNABLE_WEIGHT,
+                                       DROPOUT, 
+                                       ans_idx_head)
+        return model
+
+    def train(self, only_val=False):
+        ONLY_VAL = only_val
+
+        # constants
+        NUM_FOLD = self.NUM_FOLD
+        SAVE_BEST_CP = True
+
+        EPOCHS = 5 if not ONLY_VAL else 1
+        BATCH_SIZE = 32
+        WARMUP_EPOCHS = 0
+        GRAD_ACCUM_STEP = 1
+        LR = 1e-5
+        DIF_LR_RATE = 30
+
+        LABEL_SMOOTHING = 0.05
+
+        # data
+        train_df = data_utils.get_original_data(is_train=True)
+        if self.TRAIN_ONLY_POSI_NEGA:
+            train_df = data_utils.remove_neutral(train_df) # to train only positive and negative
+
+        # train
+        skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=2020)
+        val_scores = []
+
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment)):
+            if fold < NUM_FOLD:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if ONLY_VAL:
+                    cp = get_checkpoint(self.CHECK_POINT[fold])
+                    model.load_state_dict(cp['state_dict'])
+                
+                no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+                bert_params, bert_params_sep, other_params = model.get_params(separate_names=no_decay)
+                params = [
+                    #{'params': bert_params, 'lr': LR, 'weight_decay':0.01},
+                    {'params': bert_params, 'lr': LR, 'weight_decay':0.01},
+                    {'params': bert_params_sep, 'lr': LR, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': LR * DIF_LR_RATE, 'weight_decay':0.0001}
+                    ]
+                optimizer = optim.AdamW(params, betas=(0.9, 0.999))
+                
+                criterion = loss.IndexLoss(classes=None, smoothing=LABEL_SMOOTHING, dim=-1)
+                step_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10], gamma=0.1) #learning rate decay
+
+                dataloaders_dict = data_loader.get_train_val_loaders(train_df, train_idx, val_idx, 
+                                                                     BATCH_SIZE, self.MAX_LEN, 
+                                                                     self.VOCAB_FILE, self.MERGES_FILE, 
+                                                                     premake_dataset=self.PREMAKE_DATASET)
+
+                cp_filename = self.FILENAME_HEAD + 'checkpoint_fold' + str(fold) + '.pth'
+                model, val_score = training.train_model(
+                            model, dataloaders_dict, criterion, optimizer, 
+                            EPOCHS, GRAD_ACCUM_STEP, WARMUP_EPOCHS, step_scheduler,
+                            self.FILENAME_HEAD, fold, ONLY_VAL, self.APPLY_REMOVE_PAD, SAVE_BEST_CP)
+                val_scores.append(val_score)
+
+        # summary
+        print()
+        for fold, score in enumerate(val_scores):
+            print('fold {0} : score {1}'.format(fold, score))
+        print('average score {0}'.format(np.mean(val_scores)))
+
+    def pred_test(self, models=None):
+        if models is None:
+            models = []
+            for cpfile in self.CHECK_POINT:
+                model = self.get_model()
+                cp = get_checkpoint(cpfile)
+                model.load_state_dict(cp['state_dict'])
+                models.append(model)
+
+        # data
+        test_df = data_utils.get_original_data(is_train=False)
+        test_loader = data_loader.get_test_loader(test_df, 32, self.MAX_LEN, 
+                                                  self.VOCAB_FILE, self.MERGES_FILE)
+
+        # pred
+        preds = predicting.predicter(models, test_loader, self.APPLY_REMOVE_PAD)
+        if self.TRAIN_ONLY_POSI_NEGA:
+            preds = pred_utils.neutral_pred_to_text(preds, test_df['text'], test_df['sentiment'])
+
+        pred_utils.make_submission(preds, self.FILENAME_HEAD)
+        return

@@ -26,7 +26,9 @@ def remove_excessive_padding(data, pad_id=1):
 
     return data
 
-def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, warmup_scheduler, only_val=False):
+def trainer(model, dataloaders_dict, criterion, optimizer, 
+            grad_accum_steps, warmup_scheduler, 
+            only_val=False, remove_pad=True):
     model = model.cuda()
 
     if not only_val:
@@ -51,7 +53,8 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
 
         for batch_idx, data in enumerate(tqdm(dataloaders_dict[phase])):
             # remove excessive padding
-            data = remove_excessive_padding(data)
+            if remove_pad:
+                data = remove_excessive_padding(data)
 
             # data
             ids = data['ids'].cuda()
@@ -137,7 +140,7 @@ def trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, war
 def train_model(model, dataloaders_dict, criterion, optimizer, 
                  num_epochs, grad_accum_steps, 
                  warmup_epoch, step_scheduler, 
-                 filename_head='', fold=0, only_val=False):
+                 filename_head='', fold=0, only_val=False, remove_pad=True, save_best_cp=False):
 
     # warmup_scheduler
     if warmup_epoch > 0:
@@ -145,6 +148,7 @@ def train_model(model, dataloaders_dict, criterion, optimizer,
     
     # train
     loglist = []
+    best_score = None
     for epoch in range(num_epochs):
         # scheduler
         if epoch > warmup_epoch - 1:
@@ -161,22 +165,33 @@ def train_model(model, dataloaders_dict, criterion, optimizer,
                 if gr == 0:
                     now_lr = param_group['lr']
 
-        log = trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, warm_sch, only_val)
+        log = trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, warm_sch, only_val, remove_pad)
 
+        return_score = None
         if not only_val:
             # save checkpoint
-            #save_checkpoint(epoch, model, optimizer, step_scheduler, cp_filename)
-            save_checkpoint(None, model, None, None, filename_head+'checkpoint_fold'+str(fold)+'.pth')
+            if save_best_cp:
+                if best_score is None or log[-1] > best_score:
+                    best_score = log[-1]
+                    return_score = log[-1]
+                    #save_checkpoint(epoch, model, optimizer, step_scheduler, cp_filename)
+                    save_checkpoint(None, model, None, None, filename_head+'checkpoint_fold'+str(fold)+'.pth')
+                    print('save checkpoint')
+            else:
+                return_score = log[-1]
+                save_checkpoint(None, model, None, None, filename_head+'checkpoint_fold'+str(fold)+'.pth')
+                print('save checkpoint')
 
             # save log
             loglist.append([epoch] + [now_lr] + list(log))
             colmuns = ['epoch', 'lr', 'tr_loss', 'tr_score', 'vl_loss', 'vl_score']
             save_log(loglist, colmuns, filename_head + 'training_log_fold'+str(fold)+'.csv')
         else:
+            return_score = log[-1]
             # save log
             loglist.append([epoch] + [now_lr] + list(log))
             colmuns = ['epoch', 'lr', 'vl_loss', 'vl_score']
             save_log(loglist, colmuns, filename_head + 'val_log_fold'+str(fold)+'.csv')
 
-    return model, log[-1]
+    return model, return_score
 
