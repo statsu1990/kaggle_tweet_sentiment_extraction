@@ -300,9 +300,13 @@ def get_train_val_loaders(df, train_idx, val_idx, batch_size=8,
                           add_different_sentiment_p=0.0,
                           exchange_selected_text_p=0.0,
                           insert_selected_text_p=0.0,
+                          preproc_func_for_tr=None
                           ):
     train_df = df.iloc[train_idx]
     val_df = df.iloc[val_idx]
+
+    if preproc_func_for_tr is not None:
+        train_df = preproc_func_for_tr(train_df)
 
     if add_neutral_p==0.0 and add_nonsentiment_p==0.0 and add_different_sentiment_p==0.0 and exchange_selected_text_p==0.0 and insert_selected_text_p==0:
         train_loader = torch.utils.data.DataLoader(

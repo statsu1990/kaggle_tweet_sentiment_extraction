@@ -28,6 +28,9 @@
     <Compile Include="src\data\data_utils.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="src\data\pre_proc.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="src\download.py">
       <SubType>Code</SubType>
     </Compile>

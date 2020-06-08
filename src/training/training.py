@@ -149,6 +149,7 @@ def train_model(model, dataloaders_dict, criterion, optimizer,
     # train
     loglist = []
     best_score = None
+    return_score = None
     for epoch in range(num_epochs):
         # scheduler
         if epoch > warmup_epoch - 1:
@@ -167,7 +168,6 @@ def train_model(model, dataloaders_dict, criterion, optimizer,
 
         log = trainer(model, dataloaders_dict, criterion, optimizer, grad_accum_steps, warm_sch, only_val, remove_pad)
 
-        return_score = None
         if not only_val:
             # save checkpoint
             if save_best_cp:

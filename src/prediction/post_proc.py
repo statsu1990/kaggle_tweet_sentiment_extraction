@@ -7,6 +7,9 @@ def delete_word(selected_text, words, before=True, after=True, n_word_lim=None, 
     slc_txt = str(copy.copy(selected_text))
     splt_slc_text = slc_txt.split()
     
+    if len(slc_txt) == 0:
+        return ""
+
     if slc_noteq_txt:
         tmp_txt = text if text[0] != " " else text[1:]
         tmp_slc_txt = selected_text if selected_text[0] != " " else selected_text[1:]
@@ -158,7 +161,6 @@ def postproc_selected_text_v1(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -205,7 +207,6 @@ def postproc_selected_text_v2(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -252,7 +253,6 @@ def postproc_selected_text_v3(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -275,7 +275,6 @@ def postproc_selected_text_v4(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -302,7 +301,6 @@ def postproc_selected_text_v5(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -330,7 +328,6 @@ def postproc_selected_text_v6(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -378,7 +375,6 @@ def postproc_selected_text_v7(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -408,7 +404,6 @@ def postproc_selected_text_v8(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -517,7 +512,6 @@ def postproc_selected_text_v9(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -557,7 +551,6 @@ def postproc_selected_text_v10(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -617,7 +610,6 @@ def postproc_selected_text_v11(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -674,7 +666,6 @@ def postproc_selected_text_v12(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -731,7 +722,6 @@ def postproc_selected_text_v13(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
@@ -746,43 +736,43 @@ def postproc_selected_text_v14(text, selected_text):
     # all 0.558128 -> 0.562398, +0.004270
 
     # 0.558128 -> 0., +0.
-    slc_txt = add_char_recursive(text, slc_txt, ["."], before=False, after=True, n_word_lim=5)
+    slc_txt = add_char_recursive(txt, slc_txt, ["."], before=False, after=True, n_word_lim=5)
 
     # 0.558128 -> 0., +0.
-    slc_txt = add_char_recursive(text, slc_txt, [","], before=False, after=True, n_word_lim=5)
+    slc_txt = add_char_recursive(txt, slc_txt, [","], before=False, after=True, n_word_lim=5)
 
     # 0.558128 -> 0., -0.
-    slc_txt = delete_word(slc_txt, ["but"], before=True, after=False, n_word_lim=None, slc_noteq_txt=True, text=text)
+    slc_txt = delete_word(slc_txt, ["but"], before=True, after=False, n_word_lim=None, slc_noteq_txt=True, text=txt)
 
     # 0.558128 -> 0., -0.
-    slc_txt = delete_word(slc_txt, ["i", "im", "i'm", "iam"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+    slc_txt = delete_word(slc_txt, ["i", "im", "i'm", "iam"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=txt)
 
     # 0.558128 -> 0., -0.
-    slc_txt = delete_word(slc_txt, ["you"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+    slc_txt = delete_word(slc_txt, ["you"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=txt)
 
     # 0.558128 -> 0., -0.
-    slc_txt = delete_word(slc_txt, ["is", "are", "am", "be"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+    slc_txt = delete_word(slc_txt, ["is", "are", "am", "be"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=txt)
 
     # 0.558128 -> 0., -0.
-    slc_txt = delete_word(slc_txt, ["have"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+    slc_txt = delete_word(slc_txt, ["have"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=txt)
 
     # 0.558128 -> 0., +0.
-    slc_txt = delete_word(slc_txt, ["really"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+    slc_txt = delete_word(slc_txt, ["really"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=txt)
 
     # 0.558128 -> 0., -0.
-    slc_txt = delete_word(slc_txt, ["me"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+    slc_txt = delete_word(slc_txt, ["me"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=txt)
 
     # 0.558128 -> 0., -0.
-    slc_txt = delete_word(slc_txt, ["to"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+    slc_txt = delete_word(slc_txt, ["to"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=txt)
 
     # 0.558128 -> 0., -0.
-    slc_txt = delete_word(slc_txt, ["just"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=text)
+    slc_txt = delete_word(slc_txt, ["just"], before=True, after=False, n_word_lim=5, slc_noteq_txt=True, text=txt)
 
     # 0.558128 -> 0., +0.
-    slc_txt = delete_word(slc_txt, ["the", "a", "an"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=text)
+    slc_txt = delete_word(slc_txt, ["the", "a", "an"], before=True, after=False, n_word_lim=2, slc_noteq_txt=True, text=txt)
 
     # 0.558128 -> 0., +0.
-    slc_txt = add_word(text, slc_txt, ["super"], before=True, after=False, n_word_lim=5)
+    slc_txt = add_word(txt, slc_txt, ["super"], before=True, after=False, n_word_lim=5)
 
     #if slc_txt != selected_text[1:]:
     #    print(slc_txt)
@@ -791,7 +781,6 @@ def postproc_selected_text_v14(text, selected_text):
 
     if len(slc_txt) == 0:
         slc_txt = selected_text
-        print(selected_text)
 
     return slc_txt
 
