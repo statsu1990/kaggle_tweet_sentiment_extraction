@@ -4,13 +4,16 @@ import pandas as pd
 
 ORIGIN_DATA_DIR = '../input/tweet-sentiment-extraction'
 
-def get_original_data(is_train=True):
+def get_original_data(is_train=True, modified=False):
     """
     Returns:
         columns = [textID	text	selected_text	sentiment]
     """
     if is_train:
-        file = 'train.csv'
+        if not modified:
+            file = 'train.csv'
+        else:
+            file = 'train_modified.csv'
     else:
         file = 'test.csv'
     file = os.path.join(ORIGIN_DATA_DIR, file)
