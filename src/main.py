@@ -136,3 +136,6 @@ import pipeline
 #pipeline.Model_v1_23_1().train(only_val=True)
 
 import pipeline2
+
+pipeline2.Model2_v1_0_1().train()
+#pipeline2.Model2_v1_0_1().test()
