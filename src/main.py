@@ -144,4 +144,6 @@ import pipeline2
 
 #pipeline2.Model2_v1_1_0().train()
 #pipeline2.Model2_v1_1_1().train()
-pipeline2.Model2_v1_1_2().train()
+#pipeline2.Model2_v1_1_2().train()
+pipeline2.Model2_v1_2_0().train()
+pipeline2.Model2_v1_2_1().train()
