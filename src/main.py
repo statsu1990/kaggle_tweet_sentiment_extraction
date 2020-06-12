@@ -161,5 +161,12 @@ import pipeline2
 #pipeline2.Model2_v1_4_0().train()
 #pipeline2.Model2_v1_4_1().train()
 #pipeline2.Model2_v1_4_2().train()
-pipeline2.Model2_v1_4_3().train()
+#pipeline2.Model2_v1_4_3().train()
 
+#pipeline2.Model2_v1_5_0().train()
+#pipeline2.Model2_v1_5_1().train()
+#pipeline2.Model2_v1_5_2().train()
+#pipeline2.Model2_v1_5_3().train()
+#pipeline2.Model2_v1_5_4().train()
+#pipeline2.Model2_v1_5_5().train()
+pipeline2.Model2_v1_5_6().train()
