@@ -2,6 +2,7 @@ import download
 import pipeline
 
 #download.download_robert_base()
+download.download_bert_base()
 
 #pipeline.Model_v1_0_0().pred_test()
 #pipeline.Model_v1_1_0().train()
@@ -187,4 +188,5 @@ import pipeline2
 #pipeline2.Model2_v1_7_1().train()
 #pipeline2.Model2_v1_7_2().train()
 
-pipeline2.Model2_v1_8_0().train(only_val=True)
+#pipeline2.Model2_v1_8_0().train(only_val=True)
+#pipeline2.Model2_v1_9_0().train()
