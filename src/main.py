@@ -184,5 +184,7 @@ import pipeline2
 #pipeline2.Model2_v1_6_9().train()
 
 #pipeline2.Model2_v1_7_0().train()
-pipeline2.Model2_v1_7_1().train()
-pipeline2.Model2_v1_7_2().train()
+#pipeline2.Model2_v1_7_1().train()
+#pipeline2.Model2_v1_7_2().train()
+
+pipeline2.Model2_v1_8_0().train(only_val=True)
