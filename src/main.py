@@ -2,7 +2,11 @@ import download
 import pipeline
 
 #download.download_robert_base()
-download.download_bert_base()
+#download.download_robert_large()
+#download.download_bert_base()
+#download.download_bert_large()
+#download.download_albert_base()
+#download.download_distilbert_base()
 
 #pipeline.Model_v1_0_0().pred_test()
 #pipeline.Model_v1_1_0().train()
@@ -190,3 +194,18 @@ import pipeline2
 
 #pipeline2.Model2_v1_8_0().train(only_val=True)
 #pipeline2.Model2_v1_9_0().train()
+
+#pipeline2.Model2_Bert_v2_0_0().train()
+#pipeline2.Model2_DistilBert_v3_0_0().train()
+
+#pipeline2.Model2_v1_10_0().train()
+#pipeline2.Model2_v1_10_1().train()
+#pipeline2.Model2_v1_10_2().train()
+#pipeline2.Model2_v1_10_3().train()
+#pipeline2.Model2_v1_10_4().train()
+#pipeline2.Model2_v1_10_5().train()
+
+pipeline2.Model2_Roberta_v1_11_0().train()
+pipeline2.Model2_Roberta_v1_11_1().train()
+
+#pipeline2.Model2_RobertaLarge_v5_0_0().train()

@@ -9,9 +9,12 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.optim.lr_scheduler import _LRScheduler
 from sklearn.model_selection import StratifiedKFold
 import tokenizers
 from transformers import RobertaModel, RobertaConfig
+from transformers import BertModel, BertConfig
+from transformers import DistilBertModel, DistilBertConfig
 from tqdm import tqdm
 
 warnings.filterwarnings('ignore')
@@ -31,15 +34,39 @@ def seed_everything(seed_value):
 
 # # Data Loader
 class TweetDataset(torch.utils.data.Dataset):
-    def __init__(self, df, max_len=96):
+    def __init__(self, df, max_len=96, base='roberta'):
         self.df = df
         self.max_len = max_len
         self.labeled = 'selected_text' in df
-        self.tokenizer = tokenizers.ByteLevelBPETokenizer(
-            vocab_file='../input/roberta-base/vocab.json', 
-            merges_file='../input/roberta-base/merges.txt', 
-            lowercase=True,
-            add_prefix_space=True)
+        self.base = base
+
+        if self.base == 'roberta':
+            self.tokenizer = tokenizers.ByteLevelBPETokenizer(
+                vocab_file='../input/roberta-base/vocab.json', 
+                merges_file='../input/roberta-base/merges.txt', 
+                lowercase=True,
+                add_prefix_space=True)
+        elif self.base == 'roberta_large':
+            self.tokenizer = tokenizers.ByteLevelBPETokenizer(
+                vocab_file='../input/roberta-large/vocab.json', 
+                merges_file='../input/roberta-large/merges.txt', 
+                lowercase=True,
+                add_prefix_space=True)
+        elif self.base == 'bert':
+            self.tokenizer = tokenizers.BertWordPieceTokenizer(
+                vocab_file='../input/bert-base-uncased/vocab.txt', 
+                lowercase=True
+                )
+        elif self.base == 'distilbert':
+            self.tokenizer = tokenizers.BertWordPieceTokenizer(
+                vocab_file='../input/distilbert-base-uncased/vocab.txt', 
+                lowercase=True
+                )
+        elif self.base == 'bert_large':
+            self.tokenizer = tokenizers.BertWordPieceTokenizer(
+                vocab_file='../input/bert-large-uncased/vocab.txt', 
+                lowercase=True
+                )
 
     def __getitem__(self, index):
         data = {}
@@ -64,20 +91,33 @@ class TweetDataset(torch.utils.data.Dataset):
     
     def get_input_data(self, row):
         tweet = " " + " ".join(row.text.lower().split())
-        encoding = self.tokenizer.encode(tweet)
-        sentiment_id = self.tokenizer.encode(row.sentiment).ids
-        ids = [0] + sentiment_id + [2, 2] + encoding.ids + [2]
-        text_areas = [False] + [False] + [False, False] + [True] * len(encoding.ids) + [False]
-        offsets = [(0, 0)] * 4 + encoding.offsets + [(0, 0)]
+
+        if self.base == 'roberta' or self.base == 'roberta_large':
+            encoding = self.tokenizer.encode(tweet)
+            sentiment_id = self.tokenizer.encode(row.sentiment).ids
+
+            ids = [0] + sentiment_id + [2, 2] + encoding.ids + [2]
+            text_areas = [False] + [False] + [False, False] + [True] * len(encoding.ids) + [False]
+            offsets = [(0, 0)] * 4 + encoding.offsets + [(0, 0)]
+            pad_id = 1
+        elif self.base == 'bert' or self.base == 'distilbert' or self.base == 'bert_large':
+            # id : [CLS] 101, [SEP] 102, [PAD] 0
+            encoding = self.tokenizer.encode(tweet)
+            sentiment_id = self.tokenizer.encode(row.sentiment).ids
+
+            ids = [101] + sentiment_id[1:-1] + [102] + encoding.ids[1:-1] + [102]
+            text_areas = [False] + [False] + [False] + [True] * len(encoding.ids[1:-1]) + [False]
+            offsets = [(0, 0)] * 3 + encoding.offsets[1:-1] + [(0, 0)]
+            pad_id = 0
                 
         pad_len = self.max_len - len(ids)
         if pad_len > 0:
-            ids += [1] * pad_len
+            ids += [pad_id] * pad_len
             text_areas += [False] * pad_len
             offsets += [(0, 0)] * pad_len
         
         ids = torch.tensor(ids)
-        masks = torch.where(ids != 1, torch.tensor(1), torch.tensor(0))
+        masks = torch.where(ids != pad_id, torch.tensor(1), torch.tensor(0))
         text_areas = torch.tensor(text_areas)
         offsets = torch.tensor(offsets)
         
@@ -111,18 +151,18 @@ class TweetDataset(torch.utils.data.Dataset):
         
         return start_idx, end_idx
         
-def get_train_val_loaders(df, train_idx, val_idx, batch_size=8):
+def get_train_val_loaders(df, train_idx, val_idx, batch_size=8, max_len=96, base='roberta'):
     train_df = df.iloc[train_idx]
     val_df = df.iloc[val_idx]
 
     train_loader = torch.utils.data.DataLoader(
-        TweetDataset(train_df), 
+        TweetDataset(train_df, max_len, base=base), 
         batch_size=batch_size, 
         shuffle=True, 
         drop_last=True)
 
     val_loader = torch.utils.data.DataLoader(
-        TweetDataset(val_df), 
+        TweetDataset(val_df, max_len, base=base), 
         batch_size=batch_size, 
         shuffle=False, 
         )
@@ -131,9 +171,9 @@ def get_train_val_loaders(df, train_idx, val_idx, batch_size=8):
 
     return dataloaders_dict
 
-def get_test_loader(df, batch_size=32):
+def get_test_loader(df, batch_size=32, max_len=96, base='roberta'):
     loader = torch.utils.data.DataLoader(
-        TweetDataset(df), 
+        TweetDataset(df, max_len, base=base), 
         batch_size=batch_size, 
         shuffle=False, 
         )    
@@ -266,8 +306,8 @@ class HiddenLayerPooling(nn.Module):
         self.pooling = pooling
 
     def forward(self, hidden_layers):
-        hs = torch.stack(hidden_layers[-self.num_hidden_layer:])
-
+        hs = torch.stack((hidden_layers[-self.num_hidden_layer:])[::-1])
+        
         if self.pooling == 'average':
             if self.weight is not None:
                 hs = self.softmax(self.weight) * hs
@@ -282,13 +322,35 @@ class HiddenLayerPooling(nn.Module):
         return h
 
 class TweetModel(nn.Module):
-    def __init__(self, head=None, hidden_pooling=None):
+    def __init__(self, head=None, hidden_pooling=None, base='roberta'):
         super(TweetModel, self).__init__()
         
-        config = RobertaConfig.from_pretrained(
-            '../input/roberta-base/config.json', output_hidden_states=True)    
-        self.roberta = RobertaModel.from_pretrained(
-            '../input/roberta-base/pytorch_model.bin', config=config)
+        if base == 'roberta':
+            config = RobertaConfig.from_pretrained(
+                '../input/roberta-base/config.json', output_hidden_states=True)    
+            self.roberta = RobertaModel.from_pretrained(
+                '../input/roberta-base/pytorch_model.bin', config=config)
+        elif base == 'roberta_large':
+            config = RobertaConfig.from_pretrained(
+                '../input/roberta-large/config.json', output_hidden_states=True)    
+            self.roberta = RobertaModel.from_pretrained(
+                '../input/roberta-large/pytorch_model.bin', config=config)
+        elif base == 'bert':
+            config = BertConfig.from_pretrained(
+                '../input/bert-base-uncased/config.json', output_hidden_states=True)    
+            self.roberta = BertModel.from_pretrained(
+                '../input/bert-base-uncased/pytorch_model.bin', config=config)
+        elif base == 'distilbert':
+            config = DistilBertConfig.from_pretrained(
+                '../input/distilbert-base-uncased/config.json', output_hidden_states=True)    
+            self.roberta = DistilBertModel.from_pretrained(
+                '../input/distilbert-base-uncased/pytorch_model.bin', config=config)
+        elif base == 'bert_large':
+            config = BertConfig.from_pretrained(
+                '../input/bert-large-uncased/config.json', output_hidden_states=True)    
+            self.roberta = BertModel.from_pretrained(
+                '../input/bert-large-uncased/pytorch_model.bin', config=config)
+
         self.dropout = nn.Dropout(0.5)
 
         if head is None:
@@ -304,8 +366,13 @@ class TweetModel(nn.Module):
             self.hidden_pooling = hidden_pooling
 
     def forward(self, input_ids, attention_mask, start_positions=None, text_areas=None):
-        _, _, hs = self.roberta(input_ids, attention_mask)
         
+        model_oup = self.roberta(input_ids, attention_mask)
+        if len(model_oup) == 3:
+            _, _, hs = model_oup
+        elif len(model_oup) == 2:
+            _, hs = model_oup
+
         if self.hidden_pooling is None:
             x = torch.stack([hs[-1], hs[-2], hs[-3], hs[-4]])
             x = torch.mean(x, 0)
@@ -438,6 +505,23 @@ def compute_jaccard_score(text, start_idx, end_idx, start_logits, end_logits, of
     return jaccard(true, pred)
 
 # # Training
+class WarmUpLR(_LRScheduler):
+    """warmup_training learning rate scheduler
+    Args:
+        optimizer: optimzier(e.g. SGD)
+        total_iters: totoal_iters of warmup phase
+    """
+    def __init__(self, optimizer, total_iters, last_epoch=-1):
+        
+        self.total_iters = total_iters
+        super().__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        """we will use the first m batches, and set the learning
+        rate to base_lr * m / total_iters
+        """
+        return [base_lr * self.last_epoch / (self.total_iters + 1e-8) for base_lr in self.base_lrs]
+
 def remove_excessive_padding(data, pad_id=1):
     """
     Set length to the max length except pad in batch.
@@ -460,14 +544,20 @@ def remove_excessive_padding(data, pad_id=1):
 
 def train_model(model, dataloaders_dict, criterion, optimizer, num_epochs, filename, 
                 remove_pad=False, apply_text_area=False, only_val=False,
-                save_only_best_score=False):
+                save_only_best_score=False, warmup_epoch=0, save_only_best_loss=False):
     model.cuda()
 
     if only_val:
         num_epochs = 1
 
+    if warmup_epoch > 0:
+        warmup_scheduler = WarmUpLR(optimizer, len(dataloaders_dict['train']) * warmup_epoch)
+    else:
+        warmup_scheduler = None
+
     logger = []
     best_score = None
+    best_loss = None
     for epoch in range(num_epochs):
 
         print('Epoch {}/{}'.format(epoch + 1, num_epochs))
@@ -517,6 +607,8 @@ def train_model(model, dataloaders_dict, criterion, optimizer, num_epochs, filen
                     if phase == 'train':
                         loss.backward()
                         optimizer.step()
+                        if warmup_scheduler is not None:
+                            warmup_scheduler.step()
 
                     epoch_loss += loss.item() * len(ids)
                     
@@ -547,10 +639,18 @@ def train_model(model, dataloaders_dict, criterion, optimizer, num_epochs, filen
                 logger[-1] = logger[-1] + [epoch_loss, epoch_jaccard]
         
         if not only_val:
-            if (best_score is None) or best_score < epoch_jaccard:
+            if save_only_best_score:
+                if (best_score is None) or best_score < epoch_jaccard:
+                    torch.save(model.state_dict(), filename)
+                    best_score = epoch_jaccard
+                    print('Get best score. Save model.')
+            elif save_only_best_loss:
+                if (best_loss is None) or best_loss > epoch_loss:
+                    torch.save(model.state_dict(), filename)
+                    best_loss = epoch_loss
+                    print('Get best loss. Save model.')
+            else:
                 torch.save(model.state_dict(), filename)
-                best_score = epoch_jaccard
-                print('Get best score. Save model.')
 
     return logger
 
@@ -2331,6 +2431,2391 @@ class Model2_v1_9_0:
             model = self.get_model()
             model.cuda()
             model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_Bert_v2_0_0:
+    """
+    cv 0., lb 0.
+    bert
+
+    save only best score
+    hidden_pooling = (last3, ave, not learnable)
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=3
+        self.remove_pad = False
+        self.apply_text_area = True
+        self.use_modified_data = False
+        self.save_only_best_score = True
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'average', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling, 'bert')
+        return model
+
+    def train(self, only_val=False):
+        # # Training
+
+        # %% [code]
+        num_epochs = 6
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        if not self.use_modified_data:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        else:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train_modified.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if only_val:
+                    model.load_state_dict(torch.load(os.path.join(self.save_dir,f'bert_fold{fold}.pth')))
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size, 120, 'bert')
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'bert_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area,
+                    only_val,
+                    self.save_only_best_score)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                if not only_val:
+                    df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+                else:
+                    df.to_csv(os.path.join(self.save_dir,f'val_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df, 120, 'bert')
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'bert_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_Bert_v2_0_1:
+    """
+    cv 0., lb 0.
+    bert (lr=3e-5)
+
+    save only best score
+    hidden_pooling = (last3, ave, not learnable)
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=3
+        self.remove_pad = False
+        self.apply_text_area = True
+        self.use_modified_data = False
+        self.save_only_best_score = True
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'average', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling, 'bert')
+        return model
+
+    def train(self, only_val=False):
+        # # Training
+
+        # %% [code]
+        num_epochs = 4
+        batch_size = 16
+        lr = 3e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        warmup_epoch = 1
+        skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        if not self.use_modified_data:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        else:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train_modified.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if only_val:
+                    model.load_state_dict(torch.load(os.path.join(self.save_dir,f'bert_fold{fold}.pth')))
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size, 120, 'bert')
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'bert_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area,
+                    only_val,
+                    self.save_only_best_score,
+                    warmup_epoch)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                if not only_val:
+                    df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+                else:
+                    df.to_csv(os.path.join(self.save_dir,f'val_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df, 120, 'bert')
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'bert_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_Bert_v2_0_2:
+    """
+    cv 0., lb 0.
+    bert
+    n_splits=5
+
+    save only best score
+    hidden_pooling = (last3, ave, not learnable)
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=5
+        self.remove_pad = False
+        self.apply_text_area = True
+        self.use_modified_data = False
+        self.save_only_best_score = True
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'average', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling, 'bert')
+        return model
+
+    def train(self, only_val=False):
+        # # Training
+
+        # %% [code]
+        num_epochs = 4
+        batch_size = 32
+        lr = 3e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        warmup_epoch = 0
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        if not self.use_modified_data:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        else:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train_modified.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if only_val:
+                    model.load_state_dict(torch.load(os.path.join(self.save_dir,f'bert_fold{fold}.pth')))
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size, 120, 'bert')
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'bert_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area,
+                    only_val,
+                    self.save_only_best_score,
+                    warmup_epoch)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                if not only_val:
+                    df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+                else:
+                    df.to_csv(os.path.join(self.save_dir,f'val_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df, 120, 'bert')
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'bert_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_DistilBert_v3_0_0:
+    """
+    cv 0., lb 0.
+    DistilBert
+    n_split=5
+
+    save only best score
+    hidden_pooling = (last3, ave, not learnable)
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=5
+        self.remove_pad = False
+        self.apply_text_area = True
+        self.use_modified_data = False
+        self.save_only_best_score = True
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'average', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling, 'distilbert')
+        return model
+
+    def train(self, only_val=False):
+        # # Training
+
+        # %% [code]
+        num_epochs = 4
+        batch_size = 32
+        lr = 1e-5 #3e-5
+        dif_lr_rate = 30 #30
+        smoothing=0.1
+        warmup_epoch = 0
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        if not self.use_modified_data:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        else:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train_modified.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if only_val:
+                    model.load_state_dict(torch.load(os.path.join(self.save_dir,f'distilbert_fold{fold}.pth')))
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size, 120, 'distilbert')
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'distilbert_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area,
+                    only_val,
+                    self.save_only_best_score,
+                    warmup_epoch)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                if not only_val:
+                    df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+                else:
+                    df.to_csv(os.path.join(self.save_dir,f'val_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df, 120, 'distilbert')
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'distilbert_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_BertLarge_v4_0_0:
+    """
+    cv 0.696965, lb 0.
+    bert large
+    n_splits=5
+
+    save only best score
+    hidden_pooling = (last3, ave, not learnable)
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=5
+        self.remove_pad = False
+        self.apply_text_area = True
+        self.use_modified_data = False
+        self.save_only_best_score = True
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'average', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling, 'bert')
+        return model
+
+    def train(self, only_val=False):
+        # # Training
+
+        # %% [code]
+        num_epochs = 4
+        batch_size = 32
+        lr = 3e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        if not self.use_modified_data:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        else:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train_modified.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if only_val:
+                    model.load_state_dict(torch.load(os.path.join(self.save_dir,f'bertlarge_fold{fold}.pth')))
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size, 120, 'bert_large')
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'bertlarge_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area,
+                    only_val,
+                    self.save_only_best_score)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                if not only_val:
+                    df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+                else:
+                    df.to_csv(os.path.join(self.save_dir,f'val_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df, 120, 'bert_large')
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'bertlarge_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+
+class Model2_v1_10_0:
+    """
+    cv 0.721714, lb 0.
+    hidden_pooling = (last3, average, not learnable)
+    n_splits = 5
+
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=3
+        self.remove_pad = False
+        self.apply_text_area = True
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'average', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling)
+        return model
+
+    def train(self):
+        # # Training
+
+        # %% [code]
+        num_epochs = 4
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size)
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'roberta_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df)
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_v1_10_1:
+    """
+    cv 0.721126, lb 0.
+    hidden_pooling = (last3, average, learnable)
+    n_splits = 5
+
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=3
+        self.remove_pad = False
+        self.apply_text_area = True
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'average', True)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling)
+        return model
+
+    def train(self):
+        # # Training
+
+        # %% [code]
+        num_epochs = 4
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size)
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'roberta_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df)
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_v1_10_2:
+    """
+    cv 0.720584, lb 0.
+    hidden_pooling = (last3, max, not learnable)
+    n_splits = 5
+
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=3
+        self.remove_pad = False
+        self.apply_text_area = True
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'max', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling)
+        return model
+
+    def train(self):
+        # # Training
+
+        # %% [code]
+        num_epochs = 4
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size)
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'roberta_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df)
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_v1_10_3:
+    """
+    cv 0.721090, lb 0.
+    hidden_pooling = (last3, average, learnable)
+    n_splits = 5
+
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=3
+        self.remove_pad = False
+        self.apply_text_area = True
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'max', True)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling)
+        return model
+
+    def train(self):
+        # # Training
+
+        # %% [code]
+        num_epochs = 4
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size)
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'roberta_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df)
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_v1_10_4:
+    """
+    cv 0.721499, lb 0.
+    hidden_pooling = (last3, average, not learnable)
+    n_splits = 5
+
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=5
+        self.remove_pad = False
+        self.apply_text_area = True
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'average', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling)
+        return model
+
+    def train(self):
+        # # Training
+
+        # %% [code]
+        num_epochs = 4
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size)
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'roberta_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df)
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_Roberta_v1_11_0:
+    """
+    cv 0.718970, lb 0.712
+    roberta
+    n_splits=5
+
+    hidden_pooling = (last4, ave, not learnable)
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=3
+        self.remove_pad = False
+        self.apply_text_area = True
+        self.use_modified_data = False
+        self.save_only_best_score = False
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(4, 'average', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling, 'roberta')
+        return model
+
+    def train(self, only_val=False):
+        # # Training
+
+        # %% [code]
+        num_epochs = 3
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        if not self.use_modified_data:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        else:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train_modified.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if only_val:
+                    model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size, 96, 'roberta')
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'roberta_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area,
+                    only_val,
+                    self.save_only_best_score
+                    )
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                if not only_val:
+                    df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+                else:
+                    df.to_csv(os.path.join(self.save_dir,f'val_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df, 120, base='roberta')
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_Roberta_v1_11_1:
+    """
+    cv 0.719826, lb 0.711
+    roberta
+    n_splits=5
+
+    hidden_pooling = (last4, ave, learnable)
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    """
+    Model2_Roberta_v1_11_0 (last4, ave, not learnable) : 0.718970
+    Model2_Roberta_v1_11_1 (last4, ave, learnable) : 0.719826
+    Model2_Roberta_v1_11_2 (last4, max, not learnable) : 0.718657
+    Model2_Roberta_v1_11_3 (last4, max, learnable) : 0.718630
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=3
+        self.remove_pad = False
+        self.apply_text_area = True
+        self.use_modified_data = False
+        self.save_only_best_score = False
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(4, 'average', True)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling, 'roberta')
+        return model
+
+    def train(self, only_val=False):
+        # # Training
+
+        # %% [code]
+        num_epochs = 3
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        if not self.use_modified_data:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        else:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train_modified.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if only_val:
+                    model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size, 96, 'roberta')
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'roberta_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area,
+                    only_val,
+                    self.save_only_best_score
+                    )
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                if not only_val:
+                    df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+                else:
+                    df.to_csv(os.path.join(self.save_dir,f'val_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df, 96, base='roberta')
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_Roberta_v1_11_2:
+    """
+    cv 0.718657, lb 0.
+    roberta
+    n_splits=5
+
+    hidden_pooling = (last4, max, not learnable)
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=3
+        self.remove_pad = False
+        self.apply_text_area = True
+        self.use_modified_data = False
+        self.save_only_best_score = False
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(4, 'max', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling, 'roberta')
+        return model
+
+    def train(self, only_val=False):
+        # # Training
+
+        # %% [code]
+        num_epochs = 3
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        if not self.use_modified_data:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        else:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train_modified.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if only_val:
+                    model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size, 96, 'roberta')
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'roberta_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area,
+                    only_val,
+                    self.save_only_best_score
+                    )
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                if not only_val:
+                    df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+                else:
+                    df.to_csv(os.path.join(self.save_dir,f'val_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df, 120, base='roberta')
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_Roberta_v1_11_3:
+    """
+    cv 0.718630, lb 0.
+    roberta
+    n_splits=5
+
+    hidden_pooling = (last4, max, learnable)
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=3
+        self.remove_pad = False
+        self.apply_text_area = True
+        self.use_modified_data = False
+        self.save_only_best_score = False
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(4, 'max', True)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling, 'roberta')
+        return model
+
+    def train(self, only_val=False):
+        # # Training
+
+        # %% [code]
+        num_epochs = 3
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        if not self.use_modified_data:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        else:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train_modified.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if only_val:
+                    model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size, 96, 'roberta')
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'roberta_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area,
+                    only_val,
+                    self.save_only_best_score
+                    )
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                if not only_val:
+                    df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+                else:
+                    df.to_csv(os.path.join(self.save_dir,f'val_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df, 120, base='roberta')
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'roberta_fold{fold}.pth')))
+            model.eval()
+            models.append(model)
+
+        for data in tqdm(test_loader):
+            if self.remove_pad:
+                data = remove_excessive_padding(data)
+
+            ids = data['ids'].cuda()
+            masks = data['masks'].cuda()
+            tweet = data['tweet']
+            offsets = data['offsets'].numpy()
+            text_areas = data['text_areas'].cuda()
+
+            start_logits = []
+            end_logits = []
+            for model in models:
+                with torch.no_grad():
+                    output = model(ids, masks)
+                    start_logit, end_logit = output[0], output[1]
+                    if self.apply_text_area:
+                        start_logit[~text_areas] = torch.finfo(torch.float32).min
+                        end_logit[~text_areas] = torch.finfo(torch.float32).min
+                    
+                    start_logits.append(torch.softmax(start_logit, dim=1).cpu().detach().numpy())
+                    end_logits.append(torch.softmax(end_logit, dim=1).cpu().detach().numpy())
+
+            start_logits = np.mean(start_logits, axis=0)
+            end_logits = np.mean(end_logits, axis=0)
+            for i in range(len(ids)):    
+                start_pred = np.argmax(start_logits[i])
+                end_pred = np.argmax(end_logits[i])
+                if start_pred > end_pred:
+                    pred = tweet[i]
+                else:
+                    pred = get_selected_text(tweet[i], start_pred, end_pred, offsets[i])
+                predictions.append(pred)
+
+        if self.train_only_posi_nega:
+            neutral_idxs = (test_df['sentiment'].values=='neutral')
+            predictions = np.array(predictions)
+            predictions[neutral_idxs] = test_df['text'].values[neutral_idxs]
+
+        # # Submission
+        sub_df = pd.read_csv('../input/tweet-sentiment-extraction/sample_submission.csv')
+        sub_df['selected_text'] = predictions
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('!!!!', '!') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('..', '.') if len(x.split())==1 else x)
+        sub_df['selected_text'] = sub_df['selected_text'].apply(lambda x: x.replace('...', '.') if len(x.split())==1 else x)
+        sub_df.to_csv(os.path.join('submission.csv'), index=False)
+        sub_df.head()
+
+class Model2_RobertaLarge_v5_0_0:
+    """
+    cv 0., lb 0.
+    roberta
+    n_splits=5
+
+    hidden_pooling = (last3, ave, not learnable)
+    linear head
+    smoothing = 0.1
+    apply text area = True
+    different learning rate = 30
+    different weight decay
+    """
+    def __init__(self):
+        self.seed = 42
+        seed_everything(self.seed)
+
+        self.save_dir = os.path.join(RESULTS_DIR, self.__class__.__name__)
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.train_only_posi_nega = False
+        self.num_fold=5
+        self.remove_pad = False
+        self.apply_text_area = True
+        self.use_modified_data = False
+        self.save_only_best_score = False
+
+    def get_model(self):
+        pooling = HiddenLayerPooling(3, 'average', False)
+        head = LinearHead(768, 2, [128], 0.1)
+        model = TweetModel(head, pooling, 'roberta_large')
+        return model
+
+    def train(self, only_val=False):
+        # # Training
+
+        # %% [code]
+        num_epochs = 3
+        batch_size = 32
+        lr = 1e-5
+        dif_lr_rate = 30
+        smoothing=0.1
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+
+        # %% [code]
+
+        if not self.use_modified_data:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train.csv')
+        else:
+            train_df = pd.read_csv('../input/tweet-sentiment-extraction/train_modified.csv')
+        if self.train_only_posi_nega:
+            train_df = train_df[(train_df['sentiment']=='positive') | (train_df['sentiment']=='negative')].reset_index(drop=True)
+        train_df['text'] = train_df['text'].astype(str)
+        train_df['selected_text'] = train_df['selected_text'].astype(str)
+
+        scores = []
+        for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, train_df.sentiment), start=0): 
+            if fold < self.num_fold:
+                print(f'Fold: {fold}')
+
+                model = self.get_model()
+                if only_val:
+                    model.load_state_dict(torch.load(os.path.join(self.save_dir,f'robertalarge_fold{fold}.pth')))
+
+                bert_params, bert_params_nodecay, other_params = model.get_params()
+                params = [
+                    {'params': bert_params, 'lr': lr, 'weight_decay':0.01},
+                    {'params': bert_params_nodecay, 'lr': lr, 'weight_decay':0.0},
+                    {'params': other_params, 'lr': lr * dif_lr_rate, 'weight_decay':0.01}
+                    ]
+                optimizer = optim.AdamW(params, lr=lr, betas=(0.9, 0.999))
+                
+                criterion = IndexLoss(smoothing=smoothing)    
+                dataloaders_dict = get_train_val_loaders(train_df, train_idx, val_idx, batch_size, 120, 'roberta_large')
+
+                logger = train_model(
+                    model, 
+                    dataloaders_dict,
+                    criterion, 
+                    optimizer, 
+                    num_epochs,
+                    os.path.join(self.save_dir,f'robertalarge_fold{fold}.pth'),
+                    self.remove_pad,
+                    self.apply_text_area,
+                    only_val,
+                    self.save_only_best_score)
+
+                # save log
+                df = pd.DataFrame(logger)
+                df.columns = ['epoch', 'train_loss', 'train_score', 'val_loss', 'val_score']
+                if not only_val:
+                    df.to_csv(os.path.join(self.save_dir,f'train_log_fold{fold}.csv'))
+                else:
+                    df.to_csv(os.path.join(self.save_dir,f'val_log_fold{fold}.csv'))
+
+                scores.append((logger[-1])[-1])
+
+        print('scores', scores)
+        print('ave score', np.average(scores))
+        return
+
+    def test(self):
+        test_df = pd.read_csv('../input/tweet-sentiment-extraction/test.csv')
+        test_df['text'] = test_df['text'].astype(str)
+        test_loader = get_test_loader(test_df, 120, base='roberta_large')
+        predictions = []
+        models = []
+        for fold in range(self.num_fold):
+            model = self.get_model()
+            model.cuda()
+            model.load_state_dict(torch.load(os.path.join(self.save_dir,f'robertalarge_fold{fold}.pth')))
             model.eval()
             models.append(model)
 
