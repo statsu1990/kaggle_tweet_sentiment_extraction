@@ -205,7 +205,23 @@ import pipeline2
 #pipeline2.Model2_v1_10_4().train()
 #pipeline2.Model2_v1_10_5().train()
 
-pipeline2.Model2_Roberta_v1_11_0().train()
-pipeline2.Model2_Roberta_v1_11_1().train()
+#pipeline2.Model2_Roberta_v1_11_0().train()
+#pipeline2.Model2_Roberta_v1_11_1().train()
 
-#pipeline2.Model2_RobertaLarge_v5_0_0().train()
+#pipeline2.Model2_Roberta_v1_12_0().train()
+#pipeline2.Model2_Bert_v1_12_0().train()
+#pipeline2.Model2_Bert_v1_12_1().train()
+
+#output2 = pipeline2.Model2_RobertaLarge_v1_12_0().test_prob()
+#output1 = pipeline2.Model2_Roberta_v1_12_0().test_prob()
+#pipeline2.ensemble_roberta([output1])
+#pipeline2.ensemble_roberta([output1, output2])
+
+#output1 = pipeline2.Model2_Roberta_v1_12_0().test_prob()
+#output2 = pipeline2.Model2_RobertaLarge_v1_12_0().test_prob()
+#output3 = pipeline2.Model2_Bert_v1_12_0().test_prob()
+#output3 = pipeline2.conv_to_fit_offset(output3, output1[2])
+#pipeline2.ensemble_roberta([output1, output2, output3])
+
+pipeline2.Model2_Roberta_v1_12_1().train()
+pipeline2.Model2_Bert_v1_12_2().train()
